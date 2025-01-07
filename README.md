@@ -1,0 +1,3 @@
+BROTlib module for *pyobs*
+==========================
+

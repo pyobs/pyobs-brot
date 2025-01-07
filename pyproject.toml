@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "pyobs-brot"
+version = "0.0.1"
+description = "pyobs module for BROTlib telescopes"
+authors = ["Tim-Oliver Husser <thusser@uni-goettingen.de>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.14"
+paho-mqtt = "^2.1.0"
+
+[tool.poetry.dev-dependencies]
+black = "^21.12b0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
