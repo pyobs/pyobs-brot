@@ -1,1 +1,1 @@
-from .brottelescope import PilarTelescope
+from .brottelescope import BrotTelescope
