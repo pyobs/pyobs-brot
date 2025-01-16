@@ -7,7 +7,7 @@ import paho.mqtt.client as mqtt
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries
 from pyobs.modules.telescope.basetelescope import BaseTelescope
-
+from pyobs.utils.enums import MotionStatus
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +47,9 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
         self.telemetry = Telemetry()
 
+        # update loop
+        self.add_background_task(self._update)
+
     async def open(self):
         await BaseTelescope.open(self)
         self.mqttc.loop_start()
@@ -65,7 +68,26 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         key, value = msg.payload.decode("utf-8").split(" ")[1].split("=")
         if hasattr(self.telemetry, key):
             typ = get_type_hints(self.telemetry)[key]
-            setattr(self.telemetry, key, typ(value))
+            if typ == bool:
+                value = value == "True"
+            else:
+                value = float(value)
+            setattr(self.telemetry, key, value)
+
+    async def _update(self):
+        while True:
+            print(self.telemetry)
+            if self.telemetry.error:
+                await self._change_motion_status(MotionStatus.ERROR)
+            elif self.telemetry.sliding:
+                await self._change_motion_status(MotionStatus.SLEWING)
+            elif self.telemetry.tracking:
+                await self._change_motion_status(MotionStatus.TRACKING)
+            elif self.telemetry.parked:
+                await self._change_motion_status(MotionStatus.PARKED)
+            else:
+                await self._change_motion_status(MotionStatus.IDLE)
+            await asyncio.sleep(5)
 
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
         pass
@@ -92,10 +114,10 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         return 0
 
     async def init(self, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Set", payload=f"command power=true")
 
     async def park(self, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Set", payload=f"command power=false")
 
     async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
         pass
