@@ -69,14 +69,13 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         if hasattr(self.telemetry, key):
             typ = get_type_hints(self.telemetry)[key]
             if typ == bool:
-                value = value == "True"
+                value = value.lower() == "true"
             else:
                 value = float(value)
             setattr(self.telemetry, key, value)
 
     async def _update(self):
         while True:
-            print(self.telemetry)
             if self.telemetry.error:
                 await self._change_motion_status(MotionStatus.ERROR)
             elif self.telemetry.sliding:
