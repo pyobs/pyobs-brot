@@ -122,10 +122,12 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     async def init(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.INITIALIZING)
+        log.info("Initializing telescope...")
         self.mqttc.publish("MONETN/Set", payload=f"command power=true")
 
     async def park(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.PARKING)
+        log.info("Parking telescope...")
         self.mqttc.publish("MONETN/Set", payload=f"command power=false")
 
     async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
