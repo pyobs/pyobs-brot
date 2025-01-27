@@ -90,16 +90,16 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
         # await self._change_motion_status(MotionStatus.SLEWING)
-        self.mqttc.publish("MONETN/Set", payload=f"command rightascension={ra}")
-        self.mqttc.publish("MONETN/Set", payload=f"command declination={dec}")
-        self.mqttc.publish("MONETN/Set", payload=f"command track=1")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command rightascension={ra}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command declination={dec}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command track=1")
         # await self._change_motion_status(MotionStatus.TRACKING)
 
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
         # await self._change_motion_status(MotionStatus.SLEWING)
-        self.mqttc.publish("MONETN/Set", payload=f"command elevation={alt}")
-        self.mqttc.publish("MONETN/Set", payload=f"command azimuth={az}")
-        self.mqttc.publish("MONETN/Set", payload=f"command slew=1")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command elevation={alt}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command azimuth={az}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command slew=1")
         # await self._change_motion_status(MotionStatus.POSITIONED)
 
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
@@ -123,12 +123,12 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
     async def init(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.INITIALIZING)
         log.info("Initializing telescope...")
-        self.mqttc.publish("MONETN/Set", payload=f"command power=true")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command power=true")
 
     async def park(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.PARKING)
         log.info("Parking telescope...")
-        self.mqttc.publish("MONETN/Set", payload=f"command power=false")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command power=false")
 
     async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
         pass
