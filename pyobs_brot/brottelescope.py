@@ -128,7 +128,7 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
     async def park(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.PARKING)
         log.info("Parking telescope...")
-        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command power=false")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command park=true")
 
     async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
         pass
