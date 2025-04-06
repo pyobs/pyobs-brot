@@ -28,6 +28,7 @@ class Telemetry:
     elevation_offset: float = 0.0
     RightAscension: float = 0.0
     Declination: float = 0.0
+    FocusPosition: float = 0.0
 
 
 class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPointingSeries, FitsNamespaceMixin):
@@ -109,13 +110,13 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         return 0, 0
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus}")
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         pass
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return 0
+        return self.telemetry.FocusPosition
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
         return 0
