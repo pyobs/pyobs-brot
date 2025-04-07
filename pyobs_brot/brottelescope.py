@@ -51,6 +51,9 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         # update loop
         self.add_background_task(self._update)
 
+        # mixins
+        FitsNamespaceMixin.__init__(self, **kwargs)
+
     async def open(self):
         await BaseTelescope.open(self)
         self.mqttc.loop_start()
