@@ -1,7 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Tuple, Dict, Any, Optional, get_type_hints
+from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 import paho.mqtt.client as mqtt
 
 from pyobs.mixins import FitsNamespaceMixin
@@ -154,6 +154,31 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     async def add_pointing_measure(self, **kwargs: Any) -> None:
         pass
+
+    async def get_fits_header_before(
+        self, namespaces: Optional[List[str]] = None, **kwargs: Any
+    ) -> Dict[str, Tuple[Any, str]]:
+        """Returns FITS header for the current status of this module.
+
+        Args:
+            namespaces: If given, only return FITS headers for the given namespaces.
+
+        Returns:
+            Dictionary containing FITS headers.
+        """
+
+        # get headers from base
+        hdr = await BaseTelescope.get_fits_header_before(self)
+
+        # define values to request
+        hdr["TEL-FOCU"] = (self.telemetry.FocusPosition, "Focus position [mm]")
+        # "TEL-ROT": ("POSITION.INSTRUMENTAL.DEROTATOR[2].REALPOS", "Derotator instrumental position at end [deg]"),
+        # "DEROTOFF": ("POINTING.SETUP.DEROTATOR.OFFSET", "Derotator offset [deg]"),
+        # "AZOFF": ("POSITION.INSTRUMENTAL.AZ.OFFSET", "Azimuth offset"),
+        # "ALTOFF": ("POSITION.INSTRUMENTAL.ZD.OFFSET", "Altitude offset"),
+
+        # return it
+        return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
 
 __all__ = ["BrotTelescope"]
