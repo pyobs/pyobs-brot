@@ -47,6 +47,7 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         self.mqttc.connect(host, port, keepalive)
 
         self.telemetry = Telemetry()
+        self.focus_offset = 0.0
 
         # update loop
         self.add_background_task(self._update)
@@ -115,17 +116,19 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         return self.telemetry.elevation_offset, self.telemetry.azimuth_offset
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
         await asyncio.sleep(2)
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
-        pass
+        focus = self.telemetry.FocusPosition
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
+        await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return self.telemetry.FocusPosition
+        return self.telemetry.FocusPosition - self.focus_offset
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
-        return 0
+        return self.focus_offset
 
     async def init(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.INITIALIZING)
