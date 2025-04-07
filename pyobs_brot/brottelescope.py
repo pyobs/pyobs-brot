@@ -114,6 +114,7 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus}")
+        await asyncio.sleep(2)
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         pass
