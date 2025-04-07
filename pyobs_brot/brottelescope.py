@@ -107,10 +107,12 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         # await self._change_motion_status(MotionStatus.POSITIONED)
 
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command elevationoffset={dalt}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command azimuthoffset={daz}")
+        await asyncio.sleep(2)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return 0, 0
+        return self.telemetry.elevation_offset, self.telemetry.azimuth_offset
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus}")
