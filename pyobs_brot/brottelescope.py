@@ -5,7 +5,7 @@ from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 import paho.mqtt.client as mqtt
 
 from pyobs.mixins import FitsNamespaceMixin
-from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries
+from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.utils.enums import MotionStatus
 
@@ -33,7 +33,16 @@ class Telemetry:
     Mirror2Temperature: float = 0.0
 
 
-class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPointingSeries, FitsNamespaceMixin):
+class BrotTelescope(
+    BaseTelescope,
+    IPointingRaDec,
+    IPointingAltAz,
+    IOffsetsAltAz,
+    IFocuser,
+    ITemperatures,
+    IPointingSeries,
+    FitsNamespaceMixin,
+):
     def __init__(
         self,
         host: str,
