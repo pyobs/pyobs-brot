@@ -29,6 +29,8 @@ class Telemetry:
     RightAscension: float = 0.0
     Declination: float = 0.0
     FocusPosition: float = 0.0
+    Mirror1Temperature: float = 0.0
+    Mirror2Temperature: float = 0.0
 
 
 class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPointingSeries, FitsNamespaceMixin):
@@ -154,7 +156,12 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         return self.telemetry.RightAscension, self.telemetry.Declination
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
-        pass
+        """Returns all temperatures measured by this module.
+
+        Returns:
+            Dict containing temperatures.
+        """
+        return {"M1": self.telemetry.Mirror1Temperature, "M2": self.telemetry.Mirror2Temperature}
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         pass
