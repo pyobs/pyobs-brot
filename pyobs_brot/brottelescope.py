@@ -121,7 +121,7 @@ class BrotTelescope(
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command elevationoffset={dalt}")
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command azimuthoffset={daz}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(10)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> Tuple[float, float]:
         return self.telemetry.elevation_offset, self.telemetry.azimuth_offset
