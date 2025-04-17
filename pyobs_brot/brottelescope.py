@@ -1,11 +1,11 @@
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Tuple, Dict, Any, Optional, get_type_hints
+from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 import paho.mqtt.client as mqtt
 
 from pyobs.mixins import FitsNamespaceMixin
-from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries
+from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.utils.enums import MotionStatus
 
@@ -28,9 +28,21 @@ class Telemetry:
     elevation_offset: float = 0.0
     RightAscension: float = 0.0
     Declination: float = 0.0
+    FocusPosition: float = 0.0
+    Mirror1Temperature: float = 0.0
+    Mirror2Temperature: float = 0.0
 
 
-class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPointingSeries, FitsNamespaceMixin):
+class BrotTelescope(
+    BaseTelescope,
+    IPointingRaDec,
+    IPointingAltAz,
+    IOffsetsAltAz,
+    IFocuser,
+    ITemperatures,
+    IPointingSeries,
+    FitsNamespaceMixin,
+):
     def __init__(
         self,
         host: str,
@@ -46,9 +58,13 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         self.mqttc.connect(host, port, keepalive)
 
         self.telemetry = Telemetry()
+        self.focus_offset = 0.0
 
         # update loop
         self.add_background_task(self._update)
+
+        # mixins
+        FitsNamespaceMixin.__init__(self, **kwargs)
 
     async def open(self):
         await BaseTelescope.open(self)
@@ -109,22 +125,28 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         # await self._change_motion_status(MotionStatus.POSITIONED)
 
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command elevationoffset={dalt}")
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command azimuthoffset={daz}")
+        await asyncio.sleep(10)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return 0, 0
+        return self.telemetry.elevation_offset, self.telemetry.azimuth_offset
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        pass
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
+        await asyncio.sleep(2)
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
-        pass
+        self.focus_offset = offset
+        focus = self.telemetry.FocusPosition
+        self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
+        await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return 0
+        return self.telemetry.FocusPosition - self.focus_offset
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
-        return 0
+        return self.focus_offset
 
     async def init(self, **kwargs: Any) -> None:
         # await self._change_motion_status(MotionStatus.INITIALIZING)
@@ -149,7 +171,12 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
         return self.telemetry.RightAscension, self.telemetry.Declination
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
-        pass
+        """Returns all temperatures measured by this module.
+
+        Returns:
+            Dict containing temperatures.
+        """
+        return {"M1": self.telemetry.Mirror1Temperature, "M2": self.telemetry.Mirror2Temperature}
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         pass
@@ -159,6 +186,31 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     async def add_pointing_measure(self, **kwargs: Any) -> None:
         pass
+
+    async def get_fits_header_before(
+        self, namespaces: Optional[List[str]] = None, **kwargs: Any
+    ) -> Dict[str, Tuple[Any, str]]:
+        """Returns FITS header for the current status of this module.
+
+        Args:
+            namespaces: If given, only return FITS headers for the given namespaces.
+
+        Returns:
+            Dictionary containing FITS headers.
+        """
+
+        # get headers from base
+        hdr = await BaseTelescope.get_fits_header_before(self)
+
+        # define values to request
+        hdr["TEL-FOCU"] = (self.telemetry.FocusPosition, "Focus position [mm]")
+        # "TEL-ROT": ("POSITION.INSTRUMENTAL.DEROTATOR[2].REALPOS", "Derotator instrumental position at end [deg]"),
+        # "DEROTOFF": ("POINTING.SETUP.DEROTATOR.OFFSET", "Derotator offset [deg]"),
+        # "AZOFF": ("POSITION.INSTRUMENTAL.AZ.OFFSET", "Azimuth offset"),
+        # "ALTOFF": ("POSITION.INSTRUMENTAL.ZD.OFFSET", "Altitude offset"),
+
+        # return it
+        return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
 
 __all__ = ["BrotTelescope"]
