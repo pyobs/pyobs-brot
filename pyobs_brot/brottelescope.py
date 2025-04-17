@@ -66,13 +66,19 @@ class BrotTelescope(BaseTelescope, IOffsetsAltAz, IFocuser, ITemperatures, IPoin
 
     def _on_message(self, client, userdata, msg):
         key, value = msg.payload.decode("utf-8").split(" ")[1].split("=")
-        if hasattr(self.telemetry, key):
-            typ = get_type_hints(self.telemetry)[key]
-            if typ == bool:
-                value = value.lower() == "true"
+        s = key.split(".")
+        obj = self.telemetry
+        for token in s[:-1]:
+            if hasattr(obj, key):
+                obj = getattr(obj, token)
             else:
-                value = float(value)
-            setattr(self.telemetry, key, value)
+                print("Unknown variable:", key)
+        typ = get_type_hints(obj)[s[-1]]
+        if typ == bool:
+            value = value.lower() == "true"
+        else:
+            value = float(value)
+        setattr(obj, s[-1], value)
 
     async def _update(self):
         while True:
