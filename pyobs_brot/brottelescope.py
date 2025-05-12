@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 import paho.mqtt.client as mqtt
@@ -30,15 +30,15 @@ class TelemetryInstrumentalAxis:
 
 @dataclass
 class TelemetryInstrumentalPosition:
-    az: TelemetryInstrumentalAxis = TelemetryInstrumentalAxis()
-    alt: TelemetryInstrumentalAxis = TelemetryInstrumentalAxis()
+    az: TelemetryInstrumentalAxis = field(default_factory=TelemetryInstrumentalAxis)
+    alt: TelemetryInstrumentalAxis = field(default_factory=TelemetryInstrumentalAxis)
 
 
 @dataclass
 class TelemetryPosition:
-    current: TelemetryPositionDetails = TelemetryPositionDetails()
-    instrumental: TelemetryInstrumentalPosition = TelemetryInstrumentalPosition()
-    real: TelemetryPositionDetails = TelemetryPositionDetails()
+    current: TelemetryPositionDetails = field(default_factory=TelemetryPositionDetails)
+    instrumental: TelemetryInstrumentalPosition = field(default_factory=TelemetryInstrumentalPosition)
+    real: TelemetryPositionDetails = field(default_factory=TelemetryPositionDetails)
 
 
 @dataclass
@@ -60,7 +60,7 @@ class Telemetry:
     focusposition: float = 0.0
     mirror1temperature: float = 0.0
     mirror2temperature: float = 0.0
-    position: TelemetryPosition = TelemetryPosition()
+    position: TelemetryPosition = field(default_factory=TelemetryPosition)
 
 
 class BrotTelescope(
