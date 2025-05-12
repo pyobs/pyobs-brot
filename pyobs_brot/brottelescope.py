@@ -96,11 +96,9 @@ class BrotTelescope(
 
     def _on_message(self, client, userdata, msg):
         key, value = msg.payload.decode("utf-8").split(" ")[1].split("=")
-        print(key)
         s = key.lower().split(".")
         obj = self.telemetry
         for token in s[:-1]:
-            print(token)
             if hasattr(obj, token):
                 obj = getattr(obj, token)
             else:
@@ -112,7 +110,6 @@ class BrotTelescope(
                 value = value.lower() == "true"
             else:
                 value = float(value)
-            print(value)
             setattr(obj, s[-1], value)
 
     async def _update(self):
