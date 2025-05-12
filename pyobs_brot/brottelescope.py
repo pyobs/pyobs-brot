@@ -8,10 +8,13 @@ from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.utils.enums import MotionStatus
+from pyobs.utils.publisher import CsvPublisher
+from pyobs.utils.time import Time
 
 log = logging.getLogger(__name__)
 
 
+@dataclass
 class TelemetryPositionDetails:
     alt: float = 0.0
     az: float = 0.0
@@ -19,9 +22,22 @@ class TelemetryPositionDetails:
     dec: float = 0.0
 
 
+@dataclass
+class TelemetryInstrumentalAxis:
+    realpos: float = 0.0
+    offset: float = 0.0
+
+
+@dataclass
+class TelemetryInstrumentalPosition:
+    az: TelemetryInstrumentalAxis = TelemetryInstrumentalAxis()
+    alt: TelemetryInstrumentalAxis = TelemetryInstrumentalAxis()
+
+
+@dataclass
 class TelemetryPosition:
     current: TelemetryPositionDetails = TelemetryPositionDetails()
-    instrumental: TelemetryPositionDetails = TelemetryPositionDetails()
+    instrumental: TelemetryInstrumentalPosition = TelemetryInstrumentalPosition()
     real: TelemetryPositionDetails = TelemetryPositionDetails()
 
 
@@ -62,6 +78,7 @@ class BrotTelescope(
         host: str,
         port: int = 1883,
         keepalive: int = 60,
+        pointing_file: str = "/pyobs/pointing.csv",
         **kwargs: Any,
     ):
         BaseTelescope.__init__(self, **kwargs, motion_status_interfaces=["ITelescope", "IFocuser"])
@@ -73,6 +90,7 @@ class BrotTelescope(
 
         self.telemetry = Telemetry()
         self.focus_offset = 0.0
+        self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
         # update loop
         self.add_background_task(self._update)
@@ -146,7 +164,7 @@ class BrotTelescope(
         await asyncio.sleep(10)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.telemetry.elevation_offset, self.telemetry.azimuth_offset
+        return self.telemetry.position.instrumental.alt.offset, self.telemetry.position.instrumental.az.offset
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
@@ -195,13 +213,19 @@ class BrotTelescope(
         return {"M1": self.telemetry.mirror1temperature, "M2": self.telemetry.mirror2temperature}
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
-        pass
+        log.info("Starting pointing series.")
 
     async def stop_pointing_series(self, **kwargs: Any) -> None:
-        pass
+        log.info("Stopping pointing series.")
 
     async def add_pointing_measure(self, **kwargs: Any) -> None:
-        pass
+        await self._pointing_log(
+            time=Time.now().isot,
+            alt=self.telemetry.position.instrumental.alt.realpos,
+            az=self.telemetry.position.instrumental.az.realpos,
+            alt_off=self.telemetry.position.instrumental.alt.offset,
+            az_off=self.telemetry.position.instrumental.az.offset,
+        )
 
     async def get_fits_header_before(
         self, namespaces: Optional[List[str]] = None, **kwargs: Any
