@@ -12,6 +12,19 @@ from pyobs.utils.enums import MotionStatus
 log = logging.getLogger(__name__)
 
 
+class TelemetryPositionDetails:
+    alt: float = 0.0
+    az: float = 0.0
+    ra: float = 0.0
+    dec: float = 0.0
+
+
+class TelemetryPosition:
+    current: TelemetryPositionDetails = TelemetryPositionDetails()
+    instrumental: TelemetryPositionDetails = TelemetryPositionDetails()
+    real: TelemetryPositionDetails = TelemetryPositionDetails()
+
+
 @dataclass
 class Telemetry:
     error: bool = False
@@ -22,15 +35,16 @@ class Telemetry:
     stopped: bool = False
     homed: bool = False
     parked: bool = False
-    Azimuth: float = 0.0
-    Elevation: float = 0.0
+    azimuth: float = 0.0
+    elevation: float = 0.0
     azimuth_offset: float = 0.0
     elevation_offset: float = 0.0
-    RightAscension: float = 0.0
-    Declination: float = 0.0
-    FocusPosition: float = 0.0
-    Mirror1Temperature: float = 0.0
-    Mirror2Temperature: float = 0.0
+    rightascension: float = 0.0
+    declination: float = 0.0
+    focusposition: float = 0.0
+    mirror1temperature: float = 0.0
+    mirror2temperature: float = 0.0
+    position: TelemetryPosition = TelemetryPosition()
 
 
 class BrotTelescope(
@@ -82,13 +96,24 @@ class BrotTelescope(
 
     def _on_message(self, client, userdata, msg):
         key, value = msg.payload.decode("utf-8").split(" ")[1].split("=")
-        if hasattr(self.telemetry, key):
-            typ = get_type_hints(self.telemetry)[key]
+        print(key)
+        s = key.lower().split(".")
+        obj = self.telemetry
+        for token in s[:-1]:
+            print(token)
+            if hasattr(obj, token):
+                obj = getattr(obj, token)
+            else:
+                print("Unknown variable:", key)
+                return
+        if hasattr(obj, s[-1]):
+            typ = get_type_hints(obj)[s[-1]]
             if typ == bool:
                 value = value.lower() == "true"
             else:
                 value = float(value)
-            setattr(self.telemetry, key, value)
+            print(value)
+            setattr(obj, s[-1], value)
 
     async def _update(self):
         while True:
@@ -132,12 +157,12 @@ class BrotTelescope(
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         self.focus_offset = offset
-        focus = self.telemetry.FocusPosition
+        focus = self.telemetry.focusposition
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
         await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return self.telemetry.FocusPosition - self.focus_offset
+        return self.telemetry.focusposition - self.focus_offset
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
         return self.focus_offset
@@ -159,10 +184,10 @@ class BrotTelescope(
         return True
 
     async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.telemetry.Elevation, self.telemetry.Azimuth
+        return self.telemetry.position.current.alt, self.telemetry.position.current.az
 
     async def get_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.telemetry.RightAscension, self.telemetry.Declination
+        return self.telemetry.position.current.ra, self.telemetry.position.current.dec
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
         """Returns all temperatures measured by this module.
@@ -170,7 +195,7 @@ class BrotTelescope(
         Returns:
             Dict containing temperatures.
         """
-        return {"M1": self.telemetry.Mirror1Temperature, "M2": self.telemetry.Mirror2Temperature}
+        return {"M1": self.telemetry.mirror1temperature, "M2": self.telemetry.mirror2temperature}
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         pass
@@ -197,7 +222,7 @@ class BrotTelescope(
         hdr = await BaseTelescope.get_fits_header_before(self)
 
         # define values to request
-        hdr["TEL-FOCU"] = (self.telemetry.FocusPosition, "Focus position [mm]")
+        hdr["TEL-FOCU"] = (self.telemetry.focusposition, "Focus position [mm]")
         # "TEL-ROT": ("POSITION.INSTRUMENTAL.DEROTATOR[2].REALPOS", "Derotator instrumental position at end [deg]"),
         # "DEROTOFF": ("POINTING.SETUP.DEROTATOR.OFFSET", "Derotator offset [deg]"),
         # "AZOFF": ("POSITION.INSTRUMENTAL.AZ.OFFSET", "Azimuth offset"),
