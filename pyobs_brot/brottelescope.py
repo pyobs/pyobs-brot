@@ -8,6 +8,7 @@ import qasync
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IOffsetsRaDec, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
+from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
@@ -23,6 +24,8 @@ class BrotBaseTelescope(
     BaseTelescope,
     IFocuser,
     ITemperatures,
+    IPointingRaDec,
+    IPointingAltAz,
     FitsNamespaceMixin,
 ):
     def __init__(
@@ -75,11 +78,12 @@ class BrotBaseTelescope(
                     # tracking -> exit
                     await self._change_motion_status(MotionStatus.TRACKING)
                     return
-                case _:
+                case -1.0:
                     # something went wrong
                     await self._change_motion_status(MotionStatus.ERROR)
-                    raise MoveError
                     return
+                case _:
+                    pass
             await asyncio.sleep(1)
 
     @timeout(120)
@@ -159,14 +163,14 @@ class BrotBaseTelescope(
                     await self._change_motion_status(MotionStatus.POSITIONED)
                     log.info("Telescope powered up and initialized.")
                     return
-                case 0.0:
-                    # still moving
-                    pass
-                case _:
+                case -1.0:
                     # something went wrong
                     log.info("Error during powerup of telescope.")
                     await self._change_motion_status(MotionStatus.ERROR)
                     return
+                case 0.0:
+                    # still moving
+                    pass
             await asyncio.sleep(1)
 
     @timeout(180)
@@ -187,19 +191,19 @@ class BrotBaseTelescope(
         # send command
         await self.brot.telescope.park()
         while True:
-            match self.brot.telemetry.TELESCOPE.READY_STATE:
+            match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 0.0:
                     await self._change_motion_status(MotionStatus.PARKED)
                     log.info("Parked telescope.")
                     return
-                case 1.0:
-                    # still moving
-                    pass
-                case _:
+                case -1.0:
                     # something went wrong
                     log.info("Error during parking of the telescope.")
                     await self._change_motion_status(MotionStatus.ERROR)
                     return
+                case _:
+                    # still moving
+                    pass
             await asyncio.sleep(1)
 
     @timeout(20)
@@ -231,19 +235,19 @@ class BrotBaseTelescope(
 
 class BrotRaDecTelescope(
     BrotBaseTelescope,
-    IPointingRaDec,
     IOffsetsRaDec,
     IPointingSeries
 ):
-     def __init__(
+    def __init__(
         self,
         host: str,
         name: str,
         port: int = 1883,
         keepalive: int = 60,
+        pointing_file: str = "./pointing.csv",
         **kwargs: Any,
     ):
-        BrotBaseTelescope.__init__(self,*args, **kwargs)
+        BrotBaseTelescope.__init__(self,host,name,port,keepalive, **kwargs)
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
@@ -252,7 +256,7 @@ class BrotRaDecTelescope(
         self.brot.telescope.ser_offset_dec(ddec)
 
     async def get_offsets_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET*-1.0, self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET
+        return [self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET*-1.0, self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET]
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         log.info("Starting pointing series.")
@@ -281,12 +285,12 @@ class BrotRaDecTelescope(
         """
 
         # get headers from base
-        hdr = await BaseTelescope.get_fits_header_before(self)
+        hdr = await BrotBaseTelescope.get_fits_header_before(self)
 
         # define values to request
         hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
-        hdr["HAOFF"]: (self.brot._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset"),
-        hdr["DECOFF"]: (self.brot._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset"),
+        hdr["HAOFF"] = (self.brot._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
+        hdr["DECOFF"] = (self.brot._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
 
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
