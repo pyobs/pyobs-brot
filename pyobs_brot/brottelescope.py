@@ -4,6 +4,7 @@ import logging
 from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 
 import async_timer
+import qasync
 
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IPointingSeries, IPointingRaDec, IPointingAltAz
@@ -14,7 +15,7 @@ from pyobs.utils.time import Time
 from pyobs.utils.exceptions import MoveError
 
 from brot.mqtttransport import MQTTTransport
-from .brot import Transport, BROT, TelescopeStatus
+from brot import Transport, BROT, TelescopeStatus
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +25,6 @@ class BrotTelescope(
     IPointingRaDec,
     IPointingAltAz,
     IOffsetsAltAz,
-    IOffsetsRaDec,
     IFocuser,
     ITemperatures,
     IPointingSeries,
@@ -33,11 +33,10 @@ class BrotTelescope(
     def __init__(
         self,
         host: str,
-        port: int = 1883,
         name: str,
         mount: str,
+        port: int = 1883,
         keepalive: int = 60,
-        pointing_file: str = "/pyobs/pointing.csv",
         **kwargs: Any,
     ):
         BaseTelescope.__init__(self, **kwargs, motion_status_interfaces=["ITelescope", "IFocuser"])
@@ -45,7 +44,7 @@ class BrotTelescope(
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
         self.focus_offset = 0.0
-        self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
+        #self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
         # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
@@ -53,6 +52,7 @@ class BrotTelescope(
     @qasync.asyncSlot()
     async def open(self):
         await BaseTelescope.open(self)
+        await self._change_motion_status(MotionStatus.PARKED)
         asyncio.create_task(self.mqtt.run())
 
     async def close(self):
@@ -80,7 +80,7 @@ class BrotTelescope(
                 case _:
                     # something went wrong
                     break
-             await asyncio.sleep(5)
+            await asyncio.sleep(5)
         await self._change_motion_status(MotionStatus.ERROR)
         raise MoveError
 
@@ -106,7 +106,7 @@ class BrotTelescope(
                 case _:
                     # something went wrong
                     break
-             await asyncio.sleep(5)
+            await asyncio.sleep(5)
         await self._change_motion_status(MotionStatus.ERROR)
         raise MoveError
 
@@ -116,7 +116,7 @@ class BrotTelescope(
         await asyncio.sleep(10)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.telemetry.position.instrumental.alt.offset, self.telemetry.position.instrumental.az.offset
+        return self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET, self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         self.mqttc.publish("MONETN/Telescope/SET", payload=f"command focus={focus + self.focus_offset}")
@@ -129,7 +129,7 @@ class BrotTelescope(
         await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return self.telemetry.focusposition - self.focus_offset
+        return self.brot.telescope._telemetry.focusposition - self.focus_offset
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
         return self.focus_offset
@@ -141,6 +141,7 @@ class BrotTelescope(
                 pass
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online.")
+                await self._change_motion_status(MotionStatus.POSITIONED)
                 return
             case TelescopeStatus.ERROR:
                 log.info("Telescope can not be initialized, it has errors.")
@@ -149,14 +150,14 @@ class BrotTelescope(
         await self._change_motion_status(MotionStatus.INITIALIZING)
         log.info("Initializing telescope...")
         # create timout timer (2 min)
-        abort_timer = async_timer.Timer(2*60)
+        abort_timer = async_timer.Timer(2*60, target= lambda:True)
         # send command
         await self.brot.telescope.power_on()
         # start timer
         abort_timer.start()
         # while not timeout
         while abort_timer.is_running():
-            match self.brot.telemetry.TELESCOPE.READY_STATE:
+            match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 1.0:
                     await self._change_motion_status(MotionStatus.POSITIONED)
                     return
@@ -166,7 +167,7 @@ class BrotTelescope(
                 case _:
                     # something went wrong
                     break
-             await asyncio.sleep(5)
+            await asyncio.sleep(5)
         log.info("Error during powerup of telescope.")
         await self._change_motion_status(MotionStatus.ERROR)
 
@@ -182,7 +183,7 @@ class BrotTelescope(
                 log.info("Telescope can not be parked, it has errors.")
                 await self._change_motion_status(MotionStatus.ERROR)
                 return
-        await await self._change_motion_status(MotionStatus.PARKING)
+        await self._change_motion_status(MotionStatus.PARKING)
         log.info("Parking telescope...")
         # create timout timer (2 min)
         abort_timer = async_timer.Timer(2*60)
@@ -202,7 +203,7 @@ class BrotTelescope(
                 case _:
                     # something went wrong
                     break
-             await asyncio.sleep(5)
+            await asyncio.sleep(5)
         log.info("Error during parking of the telescope.")
         await self._change_motion_status(MotionStatus.ERROR)
 
@@ -218,10 +219,10 @@ class BrotTelescope(
                 return False
 
     async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.brot.transport.telemetry.POSITION.HORIZONTAL.ALT, self.brot.transport.telemetry.POSITION.HORIZONTAL.AZ
+        return self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT, self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
 
     async def get_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.transport.telemetry.POSITION.EQUATORIAL.RA_J2000, self.transport.telemetry.POSITION.EQUATORIAL.DEC_J2000
+        return self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000, self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
         """Returns all temperatures measured by this module.
