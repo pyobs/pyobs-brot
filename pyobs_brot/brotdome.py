@@ -8,20 +8,21 @@ import qasync
 
 from pyobs.events import RoofOpenedEvent, RoofClosingEvent
 from pyobs.mixins import FitsNamespaceMixin
-from pyobs.interfaces import IDome
-from pyobs.modules.roof.baseroof import BaseDome
+from pyobs.interfaces import IDome,IRoof,IMotion
+from pyobs.modules.roof.basedome import BaseDome
+from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.time import Time
 from pyobs.utils.exceptions import MoveError
 
 from brot.mqtttransport import MQTTTransport
 from brot import Transport, BROT, TelescopeStatus
+from brot.dome import DomeStatus, DomeShutterStatus
 
 log = logging.getLogger(__name__)
 
 class BrotDome(
     BaseDome,
-    IDome,
     FitsNamespaceMixin
     ):
 
@@ -38,140 +39,151 @@ class BrotDome(
         self.brot = BROT(self.mqtt, name)
         # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
+        # add thread for pulling the status constantly
+        self.add_background_task(self._update_status)
 
-    @qasync.asyncSlot()
+
     async def open(self):
-        await BaseRoof.open(self)
+        await BaseDome.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
+        await self.comm.register_event(RoofOpenedEvent)
+        await self.comm.register_event(RoofClosingEvent)
         # check whats up
-        match self.brot.telescope.status.value:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
-                await self._change_motion_status(MotionStatus.PARKED)
-            case TelescopeStatus.ONLINE:
-                log.info("Telescope is already online. Please make sure it is not used by another instance!")
-                await self._change_motion_status(MotionStatus.POSITIONED)
-            case TelescopeStatus.ERROR:
-                log.info("Telescope is in error state.")
-                await self._change_motion_status(MotionStatus.ERROR)
+        if self.brot.dome.status == DomeStatus.ERROR:
+            await self._change_motion_status(MotionStatus.ERROR)
+            log.info("Dome is in error state.")
+        elif self.brot.dome.in_motion:
+            await self._change_motion_status(MotionStatus.SLEWING)
+            log.info("Dome is already in motion. Please make sure it is not used by another instance!")
+        elif self.brot.dome.status == DomeStatus.PARKED and self.brot.dome.shutter == DomeShutterStatus.CLOSED:
+            await self._change_motion_status(MotionStatus.PARKED)
+            log.info("Dome is closed and parked.")
+        else:
+            await self._change_motion_status(MotionStatus.POSITIONED)
+            log.info("Dome is already online. Please make sure it is not used by another instance!")
 
-    async def get_altaz(self) -> float:
-        return self.brot.dome.azimuth
+    async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
+        return 0.0, self.brot.dome.azimuth
 
-    @timeout(5*60)
+    async def _update_status(self) -> None:
+        while True:
+            try:
+                current_state = await self.get_motion_status()
+                new_state = current_state
+                # first two can only be updated by the init/park method
+                if current_state == MotionStatus.INITIALIZING:
+                    pass
+                elif current_state == MotionStatus.PARKING:
+                    pass
+                elif self.brot.dome.status == DomeStatus.ERROR:
+                    new_state = MotionStatus.ERROR
+                elif self.brot.dome.status == DomeStatus.PARKED and self.brot.dome.shutter == DomeShutterStatus.CLOSED:
+                    new_state = MotionStatus.PARKED
+                elif self.brot.dome.in_motion:
+                    new_state = MotionStatus.SLEWING
+                else:
+                    new_state = MotionStatus.POSITIONED
+                if new_state != current_state:
+                    await self._change_motion_status(new_state)
+            except:
+                pass
+            await asyncio.sleep(1)
+
+    @timeout(300)
     async def init(self, **kwargs: Any) -> None:
-        """Open the roof.
-
-        Raises:
-            AcquireLockFailed: If current motion could not be aborted.
-        """
-
-        if self.brot.dome.shutter == self.brot.dome.DomeShutterStatus.OPEN:
+        log.info("Opening roof")
+        if self.brot.dome.shutter == DomeShutterStatus.OPEN:
             return
-        elif self.brot.dome.status == self.brot.dome.DomeStatus.ERROR:
+        elif self.brot.dome.status == DomeStatus.ERROR:
             await self._change_motion_status(MotionStatus.ERROR)
             log.info("Dome is in error state. Cannot open.")
             return
 
-        async with LockWithAbort(self._lock_motion, self._abort_motion):
-            await self._change_motion_status(MotionStatus.INITIALIZING)
+        await self._change_motion_status(MotionStatus.INITIALIZING)
 
-            #send open command
-            await self.brot.dome.open()
+        #send open command
+        await self.brot.dome.open()
 
-            while True:
-                match self.brot.dome.shutter:
-                    case self.brot.dome.DomeShutterStatus.OPEN:
-                        log.info("Dome is open.")
-                        break
-                    case _:
-                        pass
-                await asyncio.sleep(1)
-            # send tracking command
-            await self.brot.dome.start_tracking()
-            while True:
-                match self.brot.dome.status:
-                    case self.brot.dome.DomeStatus.TRACKING:
-                        log.info("Dome is tracking the telescope azimuth.")
-                        break
-                    case self.brot.dome.DomeStatus.ERROR:
-                        log.info("Dome is in error state.")
-                        await self._change_motion_status(MotionStatus.ERROR)
-                        return
-                    case _:
-                        pass
-                await asyncio.sleep(1)
-            await self._change_motion_status(MotionStatus.IDLE)
-            await self.comm.send_event(RoofOpenedEvent())
+        while True:
+            match self.brot.dome.shutter:
+                case DomeShutterStatus.OPEN:
+                    log.info("Dome is open.")
+                    break
+                case _:
+                    pass
+            await asyncio.sleep(1)
+        # send tracking command
+        await self.brot.dome.start_tracking()
+        while True:
+            match self.brot.dome.status:
+                case DomeStatus.TRACKING:
+                    log.info("Dome is tracking the telescope azimuth.")
+                    break
+                case DomeStatus.ERROR:
+                    log.info("Dome is in error state.")
+                    await self._change_motion_status(MotionStatus.ERROR)
+                    return
+                case _:
+                    pass
+            await asyncio.sleep(1)
+        await self._change_motion_status(MotionStatus.POSITIONED)
+        await self.comm.send_event(RoofOpenedEvent())
 
-
-    @timeout(5*60)
+    @timeout(300)
     async def park(self, **kwargs: Any) -> None:
-        """Close the roof. (stop tracking, close and go to parking position for dome)
-
-        Raises:
-            AcquireLockFailed: If current motion could not be aborted.
-        """
-
-        if self.brot.dome.status == self.brot.dome.DomeStatus.PARKED and self.brot.some.shutter == self.brot.dome.DomeShutterStatus.CLOSED:
+        if self.brot.dome.status == DomeStatus.PARKED and self.brot.some.shutter == DomeShutterStatus.CLOSED:
             return
-        elif self.brot.dome.status == self.brot.dome.DomeStatus.ERROR:
+        elif self.brot.dome.status == DomeStatus.ERROR:
             await self._change_motion_status(MotionStatus.ERROR)
             log.info("Dome is in error state. Cannot close/park.")
             return
 
-        async with LockWithAbort(self._lock_motion, self._abort_motion):
-            await self._change_motion_status(MotionStatus.PARKING)
-            await self.comm.send_event(RoofClosingEvent())
-            # stop tracking
-            await self.brot.dome.stop_tracking()
-            while True:
-                match self.brot.dome.status:
-                    case self.brot.dome.DomeStatus.TRACKING:
-                        pass
-                    case self.brot.dome.DomeStatus.ERROR:
-                        log.info("Dome is in error state.")
-                        await self._change_motion_status(MotionStatus.ERROR)
-                        return
-                    case _:
-                        break
-                await asyncio.sleep(1)
-            # close shutter
-            await self.brot.dome.close()
-            while True:
-                match self.brot.dome.shutter:
-                    case self.brot.dome.DomeShutterStatus.CLOSED:
-                        log.info("Dome shutter is closed.")
-                        break
-                    case _:
-                        pass
-                await asyncio.sleep(1)
+        await self._change_motion_status(MotionStatus.PARKING)
+        await self.comm.send_event(RoofClosingEvent())
+        # stop tracking
+        await self.brot.dome.stop_tracking()
+        while True:
+            match self.brot.dome.status:
+                case DomeStatus.TRACKING:
+                    pass
+                case DomeStatus.ERROR:
+                    log.info("Dome is in error state.")
+                    await self._change_motion_status(MotionStatus.ERROR)
+                    return
+                case _:
+                    break
+            await asyncio.sleep(1)
+        # close shutter
+        await self.brot.dome.close()
+        while True:
+            match self.brot.dome.shutter:
+                case DomeShutterStatus.CLOSED:
+                    log.info("Dome shutter is closed.")
+                    break
+                case _:
+                    pass
+            await asyncio.sleep(1)
 
-            # go to parking position
-            await self.brot.dome.park()
-            while True:
-                match self.brot.dome.status:
-                    case self.brot.dome.DomeStatus.PARKED:
-                        log.info("Dome is parked.")
-                        break
-                    case self.brot.dome.DomeStatus.ERROR:
-                        log.info("Dome is in error state.")
-                        await self._change_motion_status(MotionStatus.ERROR)
-                        return
-                    case _:
-                        pass
-                await asyncio.sleep(1)
-            await self._change_motion_status(MotionStatus.PARKED)
+        # go to parking position
+        await self.brot.dome.park()
+        while True:
+            match self.brot.dome.status:
+                case DomeStatus.PARKED:
+                    log.info("Dome is parked.")
+                    break
+                case DomeStatus.ERROR:
+                    log.info("Dome is in error state.")
+                    await self._change_motion_status(MotionStatus.ERROR)
+                    return
+                case _:
+                    pass
+            await asyncio.sleep(1)
+        await self._change_motion_status(MotionStatus.PARKED)
 
-        async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
-            """Stop the motion.
-
-            Args:
-                device: Name of device to stop, or None for all.
-
-            Raises:
-                AcquireLockFailed: If current motion could not be aborted.
-            """
-            pass # no stopping of the roof possible
+    async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
+        pass # no stopping of the roof possible
+    async def move_altaz(self,**kwargs: Any) ->None:
+        pass
 
 __all__ = ["BrotDome"]
