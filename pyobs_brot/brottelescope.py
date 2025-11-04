@@ -6,7 +6,7 @@ from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 import qasync
 
 from pyobs.mixins import FitsNamespaceMixin
-from pyobs.interfaces import IFocuser, ITemperatures, IOffsetsAltAz, IOffsetsRaDec, IPointingSeries, IPointingRaDec, IPointingAltAz
+from pyobs.interfaces import IRoof, IDome, IFocuser, ITemperatures, IOffsetsAltAz, IOffsetsRaDec, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
@@ -34,6 +34,8 @@ class BrotBaseTelescope(
         name: str,
         port: int = 1883,
         keepalive: int = 60,
+        roof: str = "None",
+        dome: str = "None",
         **kwargs: Any,
     ):
         BaseTelescope.__init__(self, **kwargs, motion_status_interfaces=["ITelescope", "IFocuser"])
@@ -41,6 +43,10 @@ class BrotBaseTelescope(
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
         self.focus_offset = 0.0
+        self._dome = dome
+        self._roof = roof
+
+
         # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
 
@@ -59,11 +65,23 @@ class BrotBaseTelescope(
             case TelescopeStatus.ERROR:
                 log.info("Telescope is in error state.")
                 await self._change_motion_status(MotionStatus.ERROR)
+        if self._dome != "None":
+            # check dome
+            try:
+                await self.proxy(self._dome, IDome)
+            except ValueError:
+                log.warning("Dome does not exist or is not of correct type at the moment.")
+        if self._roof != "None":
+            # check dome
+            try:
+                await self.proxy(self._roof, IRoof)
+            except ValueError:
+                log.warning("Roof does not exist or is not of correct type at the moment.")
 
     async def close(self):
         await BaseTelescope.close(self)
 
-    @timeout(120)
+    @timeout(5*60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
         # change to slewing
         await self._change_motion_status(MotionStatus.SLEWING)
@@ -76,15 +94,31 @@ class BrotBaseTelescope(
                     pass
                 case 8.0:
                     # tracking -> exit
-                    await self._change_motion_status(MotionStatus.TRACKING)
-                    return
+                    break
                 case -1.0:
                     # something went wrong
                     await self._change_motion_status(MotionStatus.ERROR)
+                    log.info("The telescope experienced an error during track command.")
                     return
                 case _:
                     pass
             await asyncio.sleep(1)
+        if self._dome != "None":
+            dome = await self.proxy(self._dome, IDome)
+            while True:
+                match dome.get_motion_status():
+                    case MotionStatus.POSITIONED:
+                        await self._change_motion_status(MotionStatus.TRACKING)
+                        return
+                    case MotionStatus.ERROR:
+                        await self._change_motion_status(MotionStatus.ERROR)
+                        log.info("The dome experienced an error during track command.")
+                        return
+                    case MotionStatus.PARKED:
+                        await self._change_motion_status(MotionStatus.TRACKING)
+                        log.info("The dome is parked, tracking but not onsky.")
+                        return
+
 
     @timeout(120)
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
@@ -96,17 +130,30 @@ class BrotBaseTelescope(
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0, 1.0:
-                    await self._change_motion_status(MotionStatus.POSITIONED)
-                    return
+                    break
                 case 1.0,8.0:
                     # still moving
                     pass
                 case _:
                     # something went wrong
                     await self._change_motion_status(MotionStatus.ERROR)
-                    raise MoveError
                     return
             await asyncio.sleep(1)
+        if self._dome != "None":
+            dome = await self.proxy(self._dome, IDome)
+            while True:
+                match dome.get_motion_status():
+                    case MotionStatus.POSITIONED:
+                        await self._change_motion_status(MotionStatus.POSITIONED)
+                        return
+                    case MotionStatus.ERROR:
+                        await self._change_motion_status(MotionStatus.ERROR)
+                        log.info("The dome experienced an error during track command.")
+                        return
+                    case MotionStatus.PARKED:
+                        await self._change_motion_status(MotionStatus.POSITIONED)
+                        log.info("The dome is parked, tracking but not onsky.")
+                        return
 
 
     async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
