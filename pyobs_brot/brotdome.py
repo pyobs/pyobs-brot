@@ -7,25 +7,22 @@ import async_timer
 import qasync
 
 from pyobs.events import RoofOpenedEvent, RoofClosingEvent
-from pyobs.interfaces import IDome,IRoof,IMotion
+from pyobs.interfaces import IDome, IRoof, IMotion
 from pyobs.modules.roof.basedome import BaseDome
 from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.time import Time
 from pyobs.utils.exceptions import MoveError
 
-from brot.mqtttransport import MQTTTransport
-from brot import Transport, BROT, TelescopeStatus
-from brot.dome import DomeStatus, DomeShutterStatus
+from pybrotlib.mqtttransport import MQTTTransport
+from pybrotlib import Transport, BROT
+from pybrotlib.telescope import TelescopeStatus, GlobalTelescopeStatus
+from pybrotlib.dome import DomeStatus, DomeShutterStatus
 
 log = logging.getLogger(__name__)
 
-class BrotDome(
-    BaseDome,
-    IDome,
-    IRoof,
-    IMotion
-    ):
+
+class BrotDome(BaseDome, IDome, IRoof, IMotion):
 
     def __init__(
         self,
@@ -35,12 +32,11 @@ class BrotDome(
         keepalive: int = 60,
         **kwargs: Any,
     ):
-        BaseDome.__init__(self,**kwargs)
+        BaseDome.__init__(self, **kwargs)
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
         # add thread for pulling the status constantly
         self.add_background_task(self._update_status)
-
 
     async def open(self):
         await BaseDome.open(self)
@@ -99,7 +95,7 @@ class BrotDome(
 
         await self._change_motion_status(MotionStatus.INITIALIZING)
 
-        #send open command
+        # send open command
         await self.brot.dome.open()
 
         while True:
@@ -175,13 +171,15 @@ class BrotDome(
         await self._change_motion_status(MotionStatus.PARKED)
 
     async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
-        pass # no stopping of the roof possible
-    async def move_altaz(self,**kwargs: Any) ->None:
+        pass  # no stopping of the roof possible
+
+    async def move_altaz(self, **kwargs: Any) -> None:
         pass
 
-    async def _error_state(self, mess:str = "Dome is in error state."):
+    async def _error_state(self, mess: str = "Dome is in error state."):
         log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
         return
+
 
 __all__ = ["BrotDome"]

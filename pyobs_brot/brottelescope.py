@@ -3,12 +3,22 @@ from dataclasses import dataclass, field
 import logging
 from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 
-import qasync
+import qasync  # type: ignore
 
 import numpy as np
 
 from pyobs.mixins import FitsNamespaceMixin
-from pyobs.interfaces import IRoof, IDome, IFocuser, ITemperatures, IOffsetsAltAz, IOffsetsRaDec, IPointingSeries, IPointingRaDec, IPointingAltAz
+from pyobs.interfaces import (
+    IRoof,
+    IDome,
+    IFocuser,
+    ITemperatures,
+    IOffsetsAltAz,
+    IOffsetsRaDec,
+    IPointingSeries,
+    IPointingRaDec,
+    IPointingAltAz,
+)
 from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
@@ -16,9 +26,9 @@ from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
 from pyobs.utils.exceptions import MoveError
 
-from brot.mqtttransport import MQTTTransport
-from brot import Transport, BROT
-from brot.telescope import TelescopeStatus
+from pybrotlib.mqtttransport import MQTTTransport  # type: ignore
+from pybrotlib import Transport, BROT  # type: ignore
+from pybrotlib.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -49,11 +59,10 @@ class BrotBaseTelescope(
         self._dome = dome
         self._roof = roof
 
-
         # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
 
-    async def open(self):
+    async def open(self) -> None:
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
@@ -80,19 +89,20 @@ class BrotBaseTelescope(
             except ValueError:
                 log.warning("Roof does not exist or is not of correct type at the moment.")
 
-    async def close(self):
+    async def close(self) -> None:
         await BaseTelescope.close(self)
-    async def _error_state(self, mess:str = "Telescope is in error state."):
+
+    async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
         return
 
-    @timeout(5*60)
+    @timeout(5 * 60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
         # change to slewing
         await self._change_motion_status(MotionStatus.SLEWING)
         # send command
-        await self.brot.telescope.track(ra,dec)
+        await self.brot.telescope.track(ra, dec)
         await asyncio.sleep(10)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
@@ -128,19 +138,18 @@ class BrotBaseTelescope(
             except:
                 log.warning("Dome module cannot be reached.")
 
-
     @timeout(120)
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
         # change to slewing
         await self._change_motion_status(MotionStatus.SLEWING)
         # send command
-        await self.brot.telescope.move(alt,az)
+        await self.brot.telescope.move(alt, az)
         await asyncio.sleep(5)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0, 1.0:
                     break
-                case 1.0,8.0:
+                case 1.0, 8.0:
                     # still moving
                     pass
                 case _:
@@ -167,29 +176,34 @@ class BrotBaseTelescope(
             except:
                 log.warning("Dome module cannot be reached.")
 
-
     async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT, self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
+        return (
+            self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT,
+            self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ,
+        )
 
     async def get_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000*15, self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000
+        return (
+            self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000 * 15,
+            self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000,
+        )
 
-    async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
+    async def get_temperatures(self, **kwargs: Any) -> dict[str, float]:
         """Returns all temperatures measured by this module.
 
         Returns:
             Dict containing temperatures.
         """
-        pass # not implemented (yet?)
+        pass  # not implemented (yet?)
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        await self.brot.focus.set(focus+self.focus_offset)
+        await self.brot.focus.set(focus + self.focus_offset)
         await asyncio.sleep(2)
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         # get current focus position
         focus = self.brot.focus.position
-        await self.brot.fous.set(focus+offset)
+        await self.brot.fous.set(focus + offset)
         await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
@@ -280,18 +294,14 @@ class BrotBaseTelescope(
             await asyncio.sleep(1)
 
     async def is_ready(self, **kwargs: Any) -> bool:
-         match self.brot.telescope.global_status:
+        match self.brot.telescope.global_status:
             case GlobalTelescopeStatus.OPERATIONAL:
                 return True
             case GlobalTelescopeStatus.PANIC | GlobalTelescopeStatus.ERROR | _:
                 return False
 
 
-class BrotRaDecTelescope(
-    BrotBaseTelescope,
-    IOffsetsRaDec,
-    IPointingSeries
-):
+class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
     def __init__(
         self,
         host: str,
@@ -301,16 +311,19 @@ class BrotRaDecTelescope(
         pointing_file: str = "/pyobs/pointing.csv",
         **kwargs: Any,
     ):
-        BrotBaseTelescope.__init__(self,host,name,port,keepalive, **kwargs)
+        BrotBaseTelescope.__init__(self, host, name, port, keepalive, **kwargs)
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
         # send dra as dha
-        await self.brot.telescope.set_offset_ha(-1.0*dra*3600)
-        await self.brot.telescope.set_offset_dec(ddec*3600)
+        await self.brot.telescope.set_offset_ha(-1.0 * dra * 3600)
+        await self.brot.telescope.set_offset_dec(ddec * 3600)
 
-    async def get_offsets_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return [self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET*-1.0, self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET]
+    async def get_offsets_radec(self, **kwargs: Any) -> tuple[float, float]:
+        return (
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET * -1.0,
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET,
+        )
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         log.info("Starting pointing series.")
@@ -323,9 +336,13 @@ class BrotRaDecTelescope(
             time=Time.now().isot,
             ha=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.HA,
             dec=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC,
-            ha_off = self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC)) + self.brot.telescope._telemetry.POINTING.OFFSETS.HA,
-            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + self.brot.telescope._telemetry.POINTING.OFFSETS.DEC,
+            ha_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET
+            / np.cos(np.radians(self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC))
+            + self.brot.telescope._telemetry.POINTING.OFFSETS.HA,
+            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET
+            + self.brot.telescope._telemetry.POINTING.OFFSETS.DEC,
         )
+
     async def get_fits_header_before(
         self, namespaces: Optional[List[str]] = None, **kwargs: Any
     ) -> Dict[str, Tuple[Any, str]]:
@@ -349,4 +366,5 @@ class BrotRaDecTelescope(
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
-__all__ = ["BrotTelescope"]
+
+__all__ = ["BrotRaDecTelescope"]
