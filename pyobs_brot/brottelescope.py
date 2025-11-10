@@ -5,6 +5,8 @@ from typing import Tuple, Dict, Any, Optional, get_type_hints, List
 
 import qasync
 
+import numpy as np
+
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IRoof, IDome, IFocuser, ITemperatures, IOffsetsAltAz, IOffsetsRaDec, IPointingSeries, IPointingRaDec, IPointingAltAz
 from pyobs.modules.telescope.basetelescope import BaseTelescope
@@ -15,7 +17,8 @@ from pyobs.utils.time import Time
 from pyobs.utils.exceptions import MoveError
 
 from brot.mqtttransport import MQTTTransport
-from brot import Transport, BROT, TelescopeStatus
+from brot import Transport, BROT
+from brot.telescope import TelescopeStatus
 
 log = logging.getLogger(__name__)
 
@@ -50,25 +53,24 @@ class BrotBaseTelescope(
         # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
 
-    @qasync.asyncSlot()
     async def open(self):
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
         # check whats up
-        match self.brot.telescope.status.value:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
+        match self.brot.telescope.status:
+            case TelescopeStatus.PARKED | TelescopeStatus.INITPARK:
                 await self._change_motion_status(MotionStatus.PARKED)
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online. Please make sure it is not used by another instance!")
                 await self._change_motion_status(MotionStatus.POSITIONED)
             case TelescopeStatus.ERROR:
-                log.info("Telescope is in error state.")
-                await self._change_motion_status(MotionStatus.ERROR)
+                await self._error_state()
         if self._dome != "None":
             # check dome
             try:
                 await self.proxy(self._dome, IDome)
+                log.info("Dome was found.")
             except ValueError:
                 log.warning("Dome does not exist or is not of correct type at the moment.")
         if self._roof != "None":
@@ -80,6 +82,10 @@ class BrotBaseTelescope(
 
     async def close(self):
         await BaseTelescope.close(self)
+    async def _error_state(self, mess:str = "Telescope is in error state."):
+        log.error(mess)
+        await self._change_motion_status(MotionStatus.ERROR)
+        return
 
     @timeout(5*60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
@@ -87,6 +93,7 @@ class BrotBaseTelescope(
         await self._change_motion_status(MotionStatus.SLEWING)
         # send command
         await self.brot.telescope.track(ra,dec)
+        await asyncio.sleep(10)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0, 1.0:
@@ -97,27 +104,29 @@ class BrotBaseTelescope(
                     break
                 case -1.0:
                     # something went wrong
-                    await self._change_motion_status(MotionStatus.ERROR)
-                    log.info("The telescope experienced an error during track command.")
+                    await self._error_state("The telescope experienced an error during track command.")
                     return
                 case _:
                     pass
             await asyncio.sleep(1)
         if self._dome != "None":
-            dome = await self.proxy(self._dome, IDome)
-            while True:
-                match dome.get_motion_status():
-                    case MotionStatus.POSITIONED:
-                        await self._change_motion_status(MotionStatus.TRACKING)
-                        return
-                    case MotionStatus.ERROR:
-                        await self._change_motion_status(MotionStatus.ERROR)
-                        log.info("The dome experienced an error during track command.")
-                        return
-                    case MotionStatus.PARKED:
-                        await self._change_motion_status(MotionStatus.TRACKING)
-                        log.info("The dome is parked, tracking but not onsky.")
-                        return
+            try:
+                dome = await self.proxy(self._dome, IDome)
+                while True:
+                    match await dome.get_motion_status():
+                        case MotionStatus.POSITIONED:
+                            await self._change_motion_status(MotionStatus.TRACKING)
+                            return
+                        case MotionStatus.ERROR:
+                            await self._error_state("The dome experienced an error during track command.")
+                            return
+                        case MotionStatus.PARKED:
+                            await self._change_motion_status(MotionStatus.TRACKING)
+                            log.info("The dome is parked, tracking but not onsky.")
+                            return
+                    await asyncio.sleep(1)
+            except:
+                log.warning("Dome module cannot be reached.")
 
 
     @timeout(120)
@@ -140,27 +149,30 @@ class BrotBaseTelescope(
                     return
             await asyncio.sleep(1)
         if self._dome != "None":
-            dome = await self.proxy(self._dome, IDome)
-            while True:
-                match dome.get_motion_status():
-                    case MotionStatus.POSITIONED:
-                        await self._change_motion_status(MotionStatus.POSITIONED)
-                        return
-                    case MotionStatus.ERROR:
-                        await self._change_motion_status(MotionStatus.ERROR)
-                        log.info("The dome experienced an error during track command.")
-                        return
-                    case MotionStatus.PARKED:
-                        await self._change_motion_status(MotionStatus.POSITIONED)
-                        log.info("The dome is parked, tracking but not onsky.")
-                        return
+            try:
+                dome = await self.proxy(self._dome, IDome)
+                while True:
+                    match await dome.get_motion_status():
+                        case MotionStatus.POSITIONED:
+                            await self._change_motion_status(MotionStatus.POSITIONED)
+                            return
+                        case MotionStatus.ERROR:
+                            await self._error_state("The dome experienced an error during track command.")
+                            return
+                        case MotionStatus.PARKED:
+                            await self._change_motion_status(MotionStatus.POSITIONED)
+                            log.info("The dome is parked, tracking but not onsky.")
+                            return
+                    await asyncio.sleep(1)
+            except:
+                log.warning("Dome module cannot be reached.")
 
 
     async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
         return self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT, self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
 
     async def get_radec(self, **kwargs: Any) -> Tuple[float, float]:
-        return self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000, self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000
+        return self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000*15, self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000
 
     async def get_temperatures(self, **kwargs: Any) -> Dict[str, float]:
         """Returns all temperatures measured by this module.
@@ -171,13 +183,13 @@ class BrotBaseTelescope(
         pass # not implemented (yet?)
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        self.brot.focus.set(focus+self.focus_offset)
+        await self.brot.focus.set(focus+self.focus_offset)
         await asyncio.sleep(2)
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         # get current focus position
         focus = self.brot.focus.position
-        self.brot.fous.set(focus+offset)
+        await self.brot.fous.set(focus+offset)
         await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
@@ -189,7 +201,7 @@ class BrotBaseTelescope(
     @timeout(120)
     async def init(self, **kwargs: Any) -> None:
         # check whats up
-        match self.brot.telescope.status.value:
+        match self.brot.telescope.status:
             case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
                 pass
             case TelescopeStatus.ONLINE:
@@ -197,8 +209,7 @@ class BrotBaseTelescope(
                 await self._change_motion_status(MotionStatus.POSITIONED)
                 return
             case TelescopeStatus.ERROR:
-                log.info("Telescope can not be initialized, it has errors.")
-                await self._change_motion_status(MotionStatus.ERROR)
+                await self._error_state("Telescope can not be initialized, it has errors.")
                 return
         await self._change_motion_status(MotionStatus.INITIALIZING)
         log.info("Initializing telescope...")
@@ -212,8 +223,7 @@ class BrotBaseTelescope(
                     return
                 case -1.0:
                     # something went wrong
-                    log.info("Error during powerup of telescope.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state("Error during powerup of telescope.")
                     return
                 case 0.0:
                     # still moving
@@ -223,15 +233,14 @@ class BrotBaseTelescope(
     @timeout(180)
     async def park(self, **kwargs: Any) -> None:
         # check whats up
-        match self.brot.telescope.status.value:
+        match self.brot.telescope.status:
             case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
                 log.info("Telescope is already parked.")
                 return
             case TelescopeStatus.ONLINE:
                 pass
             case TelescopeStatus.ERROR:
-                log.info("Telescope can not be parked, it has errors.")
-                await self._change_motion_status(MotionStatus.ERROR)
+                await self._error_state("Telescope can not be parked, it has errors.")
                 return
         await self._change_motion_status(MotionStatus.PARKING)
         log.info("Parking telescope...")
@@ -245,8 +254,7 @@ class BrotBaseTelescope(
                     return
                 case -1.0:
                     # something went wrong
-                    log.info("Error during parking of the telescope.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state("Error during parking of the telescope.")
                     return
                 case _:
                     # still moving
@@ -267,10 +275,9 @@ class BrotBaseTelescope(
                     pass
                 case _:
                     # error
-                    log.info("Error during stopping of the telescope.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state("Error during stopping of the telescope.")
                     return
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1)
 
     async def is_ready(self, **kwargs: Any) -> bool:
          match self.brot.telescope.global_status:
@@ -291,7 +298,7 @@ class BrotRaDecTelescope(
         name: str,
         port: int = 1883,
         keepalive: int = 60,
-        pointing_file: str = "./pointing.csv",
+        pointing_file: str = "/pyobs/pointing.csv",
         **kwargs: Any,
     ):
         BrotBaseTelescope.__init__(self,host,name,port,keepalive, **kwargs)
@@ -299,8 +306,8 @@ class BrotRaDecTelescope(
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
         # send dra as dha
-        self.brot.telescope.set_offset_ha(-1.0*dra)
-        self.brot.telescope.ser_offset_dec(ddec)
+        await self.brot.telescope.set_offset_ha(-1.0*dra*3600)
+        await self.brot.telescope.set_offset_dec(ddec*3600)
 
     async def get_offsets_radec(self, **kwargs: Any) -> Tuple[float, float]:
         return [self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET*-1.0, self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET]
@@ -316,8 +323,8 @@ class BrotRaDecTelescope(
             time=Time.now().isot,
             ha=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.HA,
             dec=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC,
-            ha_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET,
-            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET
+            ha_off = self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC)) + self.brot.telescope._telemetry.POINTING.OFFSETS.HA,
+            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + self.brot.telescope._telemetry.POINTING.OFFSETS.DEC,
         )
     async def get_fits_header_before(
         self, namespaces: Optional[List[str]] = None, **kwargs: Any
@@ -336,8 +343,8 @@ class BrotRaDecTelescope(
 
         # define values to request
         hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
-        hdr["HAOFF"] = (self.brot._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
-        hdr["DECOFF"] = (self.brot._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
+        hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
+        hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
 
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
