@@ -1,1 +1,2 @@
-from .brottelescope import BrotTelescope
+from .brottelescope import BrotBaseTelescope, BrotRaDecTelescope
+from .brotdome import BrotDome
