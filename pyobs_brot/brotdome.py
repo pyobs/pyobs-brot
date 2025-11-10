@@ -2,9 +2,6 @@ import asyncio
 import logging
 from typing import Any
 
-import async_timer  # type: ignore
-import qasync  # type: ignore
-
 from pyobs.events import RoofOpenedEvent, RoofClosingEvent
 from pyobs.interfaces import IDome, IRoof, IMotion
 from pyobs.modules.roof.basedome import BaseDome
