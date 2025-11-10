@@ -7,7 +7,6 @@ import async_timer
 import qasync
 
 from pyobs.events import RoofOpenedEvent, RoofClosingEvent
-from pyobs.mixins import FitsNamespaceMixin
 from pyobs.interfaces import IDome,IRoof,IMotion
 from pyobs.modules.roof.basedome import BaseDome
 from pyobs.modules import timeout
@@ -23,7 +22,9 @@ log = logging.getLogger(__name__)
 
 class BrotDome(
     BaseDome,
-    FitsNamespaceMixin
+    IDome,
+    IRoof,
+    IMotion
     ):
 
     def __init__(
@@ -37,8 +38,6 @@ class BrotDome(
         BaseDome.__init__(self,**kwargs)
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
-        # mixins
-        FitsNamespaceMixin.__init__(self, **kwargs)
         # add thread for pulling the status constantly
         self.add_background_task(self._update_status)
 
@@ -51,8 +50,7 @@ class BrotDome(
         await self.comm.register_event(RoofClosingEvent)
         # check whats up
         if self.brot.dome.status == DomeStatus.ERROR:
-            await self._change_motion_status(MotionStatus.ERROR)
-            log.info("Dome is in error state.")
+            await self._error_state()
         elif self.brot.dome.in_motion:
             await self._change_motion_status(MotionStatus.SLEWING)
             log.info("Dome is already in motion. Please make sure it is not used by another instance!")
@@ -96,8 +94,7 @@ class BrotDome(
         if self.brot.dome.shutter == DomeShutterStatus.OPEN:
             return
         elif self.brot.dome.status == DomeStatus.ERROR:
-            await self._change_motion_status(MotionStatus.ERROR)
-            log.info("Dome is in error state. Cannot open.")
+            await self._error_state("Dome is in error state. Cannot open.")
             return
 
         await self._change_motion_status(MotionStatus.INITIALIZING)
@@ -121,8 +118,7 @@ class BrotDome(
                     log.info("Dome is tracking the telescope azimuth.")
                     break
                 case DomeStatus.ERROR:
-                    log.info("Dome is in error state.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state()
                     return
                 case _:
                     pass
@@ -135,8 +131,7 @@ class BrotDome(
         if self.brot.dome.status == DomeStatus.PARKED and self.brot.some.shutter == DomeShutterStatus.CLOSED:
             return
         elif self.brot.dome.status == DomeStatus.ERROR:
-            await self._change_motion_status(MotionStatus.ERROR)
-            log.info("Dome is in error state. Cannot close/park.")
+            await self._error_state("Dome is in error state. Cannot close/park.")
             return
 
         await self._change_motion_status(MotionStatus.PARKING)
@@ -148,8 +143,7 @@ class BrotDome(
                 case DomeStatus.TRACKING:
                     pass
                 case DomeStatus.ERROR:
-                    log.info("Dome is in error state.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state()
                     return
                 case _:
                     break
@@ -173,8 +167,7 @@ class BrotDome(
                     log.info("Dome is parked.")
                     break
                 case DomeStatus.ERROR:
-                    log.info("Dome is in error state.")
-                    await self._change_motion_status(MotionStatus.ERROR)
+                    await self._error_state()
                     return
                 case _:
                     pass
@@ -185,5 +178,10 @@ class BrotDome(
         pass # no stopping of the roof possible
     async def move_altaz(self,**kwargs: Any) ->None:
         pass
+
+    async def _error_state(self, mess:str = "Dome is in error state."):
+        log.error(mess)
+        await self._change_motion_status(MotionStatus.ERROR)
+        return
 
 __all__ = ["BrotDome"]
