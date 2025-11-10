@@ -1,9 +1,6 @@
 import asyncio
 import logging
 from typing import Any
-
-import qasync  # type: ignore
-
 import numpy as np
 
 from pyobs.mixins import FitsNamespaceMixin
