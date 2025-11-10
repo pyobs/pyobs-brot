@@ -1,7 +1,6 @@
 import asyncio
-from dataclasses import dataclass, field
 import logging
-from typing import Tuple, Dict, Any, Optional, get_type_hints, List
+from typing import Any
 
 import qasync  # type: ignore
 
@@ -24,7 +23,6 @@ from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
-from pyobs.utils.exceptions import MoveError
 
 from pybrotlib.mqtttransport import MQTTTransport  # type: ignore
 from pybrotlib import Transport, BROT  # type: ignore
@@ -176,13 +174,13 @@ class BrotBaseTelescope(
             except:
                 log.warning("Dome module cannot be reached.")
 
-    async def get_altaz(self, **kwargs: Any) -> Tuple[float, float]:
+    async def get_altaz(self, **kwargs: Any) -> tuple[float, float]:
         return (
             self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT,
             self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ,
         )
 
-    async def get_radec(self, **kwargs: Any) -> Tuple[float, float]:
+    async def get_radec(self, **kwargs: Any) -> tuple[float, float]:
         return (
             self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000 * 15,
             self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000,
@@ -194,7 +192,7 @@ class BrotBaseTelescope(
         Returns:
             Dict containing temperatures.
         """
-        pass  # not implemented (yet?)
+        return {}
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self.brot.focus.set(focus + self.focus_offset)
@@ -203,11 +201,11 @@ class BrotBaseTelescope(
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         # get current focus position
         focus = self.brot.focus.position
-        await self.brot.fous.set(focus + offset)
+        await self.brot.focus.set(focus + offset)
         await asyncio.sleep(2)
 
     async def get_focus(self, **kwargs: Any) -> float:
-        return self.brot.focus.position - self.focus_offset
+        return float(self.brot.focus.position - self.focus_offset)
 
     async def get_focus_offset(self, **kwargs: Any) -> float:
         return self.focus_offset
@@ -276,7 +274,7 @@ class BrotBaseTelescope(
             await asyncio.sleep(1)
 
     @timeout(20)
-    async def stop_motion(self, device: Optional[str] = None, **kwargs: Any) -> None:
+    async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
         # send command
         await self.brot.telescope.stop()
         while True:
@@ -304,14 +302,10 @@ class BrotBaseTelescope(
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
     def __init__(
         self,
-        host: str,
-        name: str,
-        port: int = 1883,
-        keepalive: int = 60,
         pointing_file: str = "/pyobs/pointing.csv",
         **kwargs: Any,
     ):
-        BrotBaseTelescope.__init__(self, host, name, port, keepalive, **kwargs)
+        BrotBaseTelescope.__init__(self, **kwargs)
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
@@ -327,6 +321,7 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
 
     async def start_pointing_series(self, **kwargs: Any) -> str:
         log.info("Starting pointing series.")
+        return ""
 
     async def stop_pointing_series(self, **kwargs: Any) -> None:
         log.info("Stopping pointing series.")
@@ -344,8 +339,75 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
         )
 
     async def get_fits_header_before(
-        self, namespaces: Optional[List[str]] = None, **kwargs: Any
-    ) -> Dict[str, Tuple[Any, str]]:
+        self, namespaces: list[str] | None = None, **kwargs: Any
+    ) -> dict[str, tuple[Any, str]]:
+        """Returns FITS header for the current status of this module.
+
+        Args:
+            namespaces: If given, only return FITS headers for the given namespaces.
+
+        Returns:
+            Dictionary containing FITS headers.
+        """
+
+        # get headers from base
+        hdr = await BrotBaseTelescope.get_fits_header_before(self)
+
+        # define values to request
+        hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
+        hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
+        hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
+
+        # return it
+        return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
+
+
+class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
+    def __init__(
+        self,
+        pointing_file: str = "/pyobs/pointing.csv",
+        **kwargs: Any,
+    ):
+        BrotBaseTelescope.__init__(self, **kwargs)
+        self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
+
+    async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
+        """Move an Alt/Az offset.
+
+        Args:
+            dalt: Altitude offset in degrees.
+            daz: Azimuth offset in degrees.
+
+        Raises:
+            MoveError: If device could not be moved.
+        """
+        await self.brot.telescope.set_offset_alt(dalt * 3600)
+        await self.brot.telescope.set_offset_az(daz * 3600)
+
+    async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
+        """Get Alt/Az offset.
+
+        Returns:
+            Tuple with alt and az offsets.
+        """
+        return (
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET,
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET,
+        )
+
+    async def start_pointing_series(self, **kwargs: Any) -> str:
+        log.info("Starting pointing series.")
+        return ""
+
+    async def stop_pointing_series(self, **kwargs: Any) -> None:
+        log.info("Stopping pointing series.")
+
+    async def add_pointing_measure(self, **kwargs: Any) -> None:
+        pass
+
+    async def get_fits_header_before(
+        self, namespaces: list[str] | None = None, **kwargs: Any
+    ) -> dict[str, tuple[Any, str]]:
         """Returns FITS header for the current status of this module.
 
         Args:
