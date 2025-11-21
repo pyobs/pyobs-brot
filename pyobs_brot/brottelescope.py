@@ -92,12 +92,7 @@ class BrotBaseTelescope(
         await self._change_motion_status(MotionStatus.ERROR)
         return
 
-    @timeout(5 * 60)
-    async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
-        # send command
-        await self.brot.telescope.track(ra, dec)
+    async def _wait_for_tracking(self) -> None:
         await asyncio.sleep(10)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
@@ -106,7 +101,7 @@ class BrotBaseTelescope(
                     pass
                 case 8.0:
                     # tracking -> exit
-                    break
+                    return
                 case -1.0:
                     # something went wrong
                     await self._error_state("The telescope experienced an error during track command.")
@@ -114,6 +109,15 @@ class BrotBaseTelescope(
                 case _:
                     pass
             await asyncio.sleep(1)
+
+    @timeout(5 * 60)
+    async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
+        # change to slewing
+        await self._change_motion_status(MotionStatus.SLEWING)
+        # send command
+        await self.brot.telescope.track(ra, dec)
+        await asyncio.sleep(10)
+        await self._wait_for_tracking()
         if self._dome != "None":
             try:
                 dome = await self.proxy(self._dome, IDome)
@@ -380,6 +384,8 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         """
         await self.brot.telescope.set_offset_alt(dalt * 3600)
         await self.brot.telescope.set_offset_az(daz * 3600)
+        await asyncio.sleep(10)
+        await self._wait_for_tracking()
 
     async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
         """Get Alt/Az offset.
