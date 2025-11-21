@@ -34,6 +34,7 @@ class BrotBaseTelescope(
     ITemperatures,
     IPointingRaDec,
     IPointingAltAz,
+    IPointingSeries,
     FitsNamespaceMixin,
 ):
     def __init__(
@@ -301,8 +302,16 @@ class BrotBaseTelescope(
             case GlobalTelescopeStatus.PANIC | GlobalTelescopeStatus.ERROR | _:
                 return False
 
+    async def start_pointing_series(self, **kwargs: Any) -> str:
+        """Start a new pointing series.
 
-class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
+        Returns:
+            A unique ID or filename, by which the series can be identified.
+        """
+        return ""
+
+
+class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
     def __init__(
         self,
         pointing_file: str = "/pyobs/pointing.csv",
@@ -320,25 +329,6 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
         return (
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET * -1.0,
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET,
-        )
-
-    async def start_pointing_series(self, **kwargs: Any) -> str:
-        log.info("Starting pointing series.")
-        return ""
-
-    async def stop_pointing_series(self, **kwargs: Any) -> None:
-        log.info("Stopping pointing series.")
-
-    async def add_pointing_measure(self, **kwargs: Any) -> None:
-        await self._pointing_log(
-            time=Time.now().isot,
-            ha=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.HA,
-            dec=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC,
-            ha_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET
-            / np.cos(np.radians(self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC))
-            + self.brot.telescope._telemetry.POINTING.OFFSETS.HA,
-            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET
-            + self.brot.telescope._telemetry.POINTING.OFFSETS.DEC,
         )
 
     async def get_fits_header_before(
@@ -400,16 +390,6 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET,
         )
 
-    async def start_pointing_series(self, **kwargs: Any) -> str:
-        log.info("Starting pointing series.")
-        return ""
-
-    async def stop_pointing_series(self, **kwargs: Any) -> None:
-        log.info("Stopping pointing series.")
-
-    async def add_pointing_measure(self, **kwargs: Any) -> None:
-        pass
-
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
     ) -> dict[str, tuple[Any, str]]:
@@ -433,5 +413,17 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
+    async def add_pointing_measurement(self, **kwargs: Any) -> None:
+        telemetry = self.brot.telescope._telemetry
+        data = {
+            "Time": Time.now().isot,
+            "Az": telemetry.OBJECT.HORIZONTAL.AZ,
+            "Alt": telemetry.OBJECT.HORIZONTAL.ALT,
+            "AzOff": telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET / np.cos(np.radians(telemetry.POSITION.HORIZONTAL.ALT))
+            + telemetry.POINTING.OFFSETS.AZ,
+            "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
+        }
+        await self._pointing_log(**data)
 
-__all__ = ["BrotRaDecTelescope"]
+
+__all__ = ["BrotRaDecTelescope", "BrotAltAzTelescope"]
