@@ -302,14 +302,6 @@ class BrotBaseTelescope(
             case GlobalTelescopeStatus.PANIC | GlobalTelescopeStatus.ERROR | _:
                 return False
 
-    async def start_pointing_series(self, **kwargs: Any) -> str:
-        """Start a new pointing series.
-
-        Returns:
-            A unique ID or filename, by which the series can be identified.
-        """
-        return ""
-
 
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
     def __init__(
@@ -353,6 +345,18 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
 
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
+
+    async def add_pointing_measurement(self, **kwargs: Any) -> None:
+        telemetry = self.brot.telescope._telemetry
+        data = {
+            "Time": Time.now().isot,
+            "Ha": telemetry.OBJECT.EQUATORIAL.HA,
+            "Dec": telemetry.OBJECT.EQUATORIAL.DEC,
+            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC))
+            + telemetry.POINTING.OFFSETS.HA,
+            "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
+        }
+        await self._pointing_log(**data)
 
 
 class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
