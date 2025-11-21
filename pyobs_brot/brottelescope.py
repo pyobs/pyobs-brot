@@ -357,6 +357,7 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
             "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
         }
         await self._pointing_log(**data)
+        log.info("Pointing measurement written.")
 
 
 class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
@@ -428,6 +429,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
         }
         await self._pointing_log(**data)
+        log.info("Pointing measurement written.")
 
 
 __all__ = ["BrotRaDecTelescope", "BrotAltAzTelescope"]
