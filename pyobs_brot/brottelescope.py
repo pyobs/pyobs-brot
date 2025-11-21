@@ -282,7 +282,7 @@ class BrotBaseTelescope(
         # send command
         await self.brot.telescope.stop()
         while True:
-            match self.brot._telemetry.TELESCOPE.MOTION_STATE:
+            match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0:
                     log.info("Stopped telescope.")
                     return
