@@ -70,6 +70,8 @@ class BrotBaseTelescope(
                 await self._change_motion_status(MotionStatus.POSITIONED)
             case TelescopeStatus.ERROR:
                 await self._error_state()
+        if self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE == 8:
+            await self._change_motion_status(MotionStatus.TRACKING)
         if self._dome != "None":
             # check dome
             try:
