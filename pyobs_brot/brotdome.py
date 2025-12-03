@@ -15,7 +15,7 @@ from pybrotlib.dome import DomeStatus, DomeShutterStatus
 log = logging.getLogger(__name__)
 
 
-class BrotDome(BaseDome, IDome, IRoof, IMotion):
+class BrotDome(BaseDome, IDome):
 
     def __init__(
         self,
