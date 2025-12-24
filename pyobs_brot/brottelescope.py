@@ -34,6 +34,7 @@ class BrotBaseTelescope(
     ITemperatures,
     IPointingRaDec,
     IPointingAltAz,
+    IPointingSeries,
     FitsNamespaceMixin,
 ):
     def __init__(
@@ -70,6 +71,8 @@ class BrotBaseTelescope(
                 await self._change_motion_status(MotionStatus.POSITIONED)
             case TelescopeStatus.ERROR:
                 await self._error_state()
+        if self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE == 8:
+            await self._change_motion_status(MotionStatus.TRACKING)
         if self._dome != "None":
             # check dome
             try:
@@ -92,12 +95,7 @@ class BrotBaseTelescope(
         await self._change_motion_status(MotionStatus.ERROR)
         return
 
-    @timeout(5 * 60)
-    async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
-        # send command
-        await self.brot.telescope.track(ra, dec)
+    async def _wait_for_tracking(self) -> None:
         await asyncio.sleep(10)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
@@ -106,7 +104,7 @@ class BrotBaseTelescope(
                     pass
                 case 8.0:
                     # tracking -> exit
-                    break
+                    return
                 case -1.0:
                     # something went wrong
                     await self._error_state("The telescope experienced an error during track command.")
@@ -114,6 +112,15 @@ class BrotBaseTelescope(
                 case _:
                     pass
             await asyncio.sleep(1)
+
+    @timeout(5 * 60)
+    async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
+        # change to slewing
+        await self._change_motion_status(MotionStatus.SLEWING)
+        # send command
+        await self.brot.telescope.track(ra, dec)
+        await asyncio.sleep(10)
+        await self._wait_for_tracking()
         if self._dome != "None":
             try:
                 dome = await self.proxy(self._dome, IDome)
@@ -275,7 +282,7 @@ class BrotBaseTelescope(
         # send command
         await self.brot.telescope.stop()
         while True:
-            match self.brot._telemetry.TELESCOPE.MOTION_STATE:
+            match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0:
                     log.info("Stopped telescope.")
                     return
@@ -296,7 +303,7 @@ class BrotBaseTelescope(
                 return False
 
 
-class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
+class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
     def __init__(
         self,
         pointing_file: str = "/pyobs/pointing.csv",
@@ -314,25 +321,6 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
         return (
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET * -1.0,
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET,
-        )
-
-    async def start_pointing_series(self, **kwargs: Any) -> str:
-        log.info("Starting pointing series.")
-        return ""
-
-    async def stop_pointing_series(self, **kwargs: Any) -> None:
-        log.info("Stopping pointing series.")
-
-    async def add_pointing_measure(self, **kwargs: Any) -> None:
-        await self._pointing_log(
-            time=Time.now().isot,
-            ha=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.HA,
-            dec=self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC,
-            ha_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET
-            / np.cos(np.radians(self.brot.telescope._telemetry.OBJECT.EQUATORIAL.DEC))
-            + self.brot.telescope._telemetry.POINTING.OFFSETS.HA,
-            dec_off=self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET
-            + self.brot.telescope._telemetry.POINTING.OFFSETS.DEC,
         )
 
     async def get_fits_header_before(
@@ -357,6 +345,19 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec, IPointingSeries):
 
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
+
+    async def add_pointing_measurement(self, **kwargs: Any) -> None:
+        telemetry = self.brot.telescope._telemetry
+        data = {
+            "Time": Time.now().isot,
+            "Ha": telemetry.OBJECT.EQUATORIAL.HA,
+            "Dec": telemetry.OBJECT.EQUATORIAL.DEC,
+            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC))
+            + telemetry.POINTING.OFFSETS.HA,
+            "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
+        }
+        await self._pointing_log(**data)
+        log.info("Pointing measurement written.")
 
 
 class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
@@ -380,6 +381,8 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         """
         await self.brot.telescope.set_offset_alt(dalt * 3600)
         await self.brot.telescope.set_offset_az(daz * 3600)
+        await asyncio.sleep(10)
+        await self._wait_for_tracking()
 
     async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
         """Get Alt/Az offset.
@@ -391,16 +394,6 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET,
             self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET,
         )
-
-    async def start_pointing_series(self, **kwargs: Any) -> str:
-        log.info("Starting pointing series.")
-        return ""
-
-    async def stop_pointing_series(self, **kwargs: Any) -> None:
-        log.info("Stopping pointing series.")
-
-    async def add_pointing_measure(self, **kwargs: Any) -> None:
-        pass
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
@@ -425,5 +418,18 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
+    async def add_pointing_measurement(self, **kwargs: Any) -> None:
+        telemetry = self.brot.telescope._telemetry
+        data = {
+            "Time": Time.now().isot,
+            "Az": telemetry.OBJECT.HORIZONTAL.AZ,
+            "Alt": telemetry.OBJECT.HORIZONTAL.ALT,
+            "AzOff": telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET / np.cos(np.radians(telemetry.POSITION.HORIZONTAL.ALT))
+            + telemetry.POINTING.OFFSETS.AZ,
+            "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
+        }
+        await self._pointing_log(**data)
+        log.info("Pointing measurement written.")
 
-__all__ = ["BrotRaDecTelescope"]
+
+__all__ = ["BrotRaDecTelescope", "BrotAltAzTelescope"]
