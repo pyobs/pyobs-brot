@@ -1373,14 +1373,14 @@ wheels = [
 
 [[package]]
 name = "pybrotlib"
-version = "0.1.3"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiomqtt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/3c/10f71f814842bd155cd5b37e1d3bc4be8fb6ae1edb5e97aa24a5eb5c16a5/pybrotlib-0.1.3.tar.gz", hash = "sha256:32419d60b1336865f3dc9af3f5fb93eb39046a0beac175c3b7a71add6073996c", size = 4165, upload-time = "2025-11-10T15:33:29.58Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/d3/88f7f0f85c10ab9d2dfd3e697262691c3a05d47df4f0f8f09e474710c751/pybrotlib-0.2.1.tar.gz", hash = "sha256:66c395aa1a151494cb6a47968e7d885cadecbeb9751bc9779746045a9ff2083d", size = 4454, upload-time = "2026-01-07T14:13:42.893Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/0c/30d4eac6d04be80841b5057e22949c23345a0fe752effadfa46d4de18ab4/pybrotlib-0.1.3-py3-none-any.whl", hash = "sha256:e3aa0f4e46607e9fca4dbc6ed386acca92d9ef503377d3cddd442f51ece298c5", size = 6945, upload-time = "2025-11-10T15:33:28.635Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/8c/f97229f4f860b55581dbfa9187e944f1c4140a6a1afc3515f61d6f8bdc79/pybrotlib-0.2.1-py3-none-any.whl", hash = "sha256:3d4d9c5f6d6755b8a53b2d96c3e768e37678f9da4c3b430eb90ccb17e1bd0b67", size = 8095, upload-time = "2026-01-07T14:13:43.535Z" },
 ]
 
 [[package]]
@@ -1543,7 +1543,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-brot"
-version = "0.0.7"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
@@ -1563,7 +1563,7 @@ dev = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.0.1,<8" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
-    { name = "pybrotlib", specifier = ">=0.1.3" },
+    { name = "pybrotlib", specifier = ">=0.2.0" },
     { name = "pyobs-core", specifier = ">=1,<2" },
 ]
 
