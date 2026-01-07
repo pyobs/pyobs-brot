@@ -3,8 +3,7 @@ import logging
 from typing import Any
 
 from pyobs.events import RoofOpenedEvent, RoofClosingEvent
-from pyobs.interfaces import IDome, IRoof, IMotion
-from pyobs.modules.roof.basedome import BaseDome
+from pyobs.modules.roof.baseroof import BaseRoof
 from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 
@@ -15,28 +14,29 @@ from pybrotlib.dome import DomeStatus, DomeShutterStatus
 log = logging.getLogger(__name__)
 
 
-class BrotDome(BaseDome, IDome):
-
+class BrotRoof(BaseRoof):
     def __init__(
         self,
         host: str,
         name: str,
         port: int = 1883,
-        keepalive: int = 60,
         **kwargs: Any,
     ):
-        BaseDome.__init__(self, **kwargs)
+        BaseRoof.__init__(self, **kwargs)
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
+
         # add thread for pulling the status constantly
         self.add_background_task(self._update_status)
 
     async def open(self) -> None:
-        await BaseDome.open(self)
+        await BrotRoof.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
+
         await self.comm.register_event(RoofOpenedEvent)
         await self.comm.register_event(RoofClosingEvent)
+
         # check whats up
         if self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state()
@@ -49,14 +49,6 @@ class BrotDome(BaseDome, IDome):
         else:
             await self._change_motion_status(MotionStatus.POSITIONED)
             log.info("Dome is already online. Please make sure it is not used by another instance!")
-
-    async def get_altaz(self, **kwargs: Any) -> tuple[float, float]:
-        """Returns current Alt and Az.
-
-        Returns:
-            Tuple of current Alt and Az in degrees.
-        """
-        return 0.0, self.brot.dome.azimuth
 
     async def _update_status(self) -> None:
         while True:
@@ -106,19 +98,7 @@ class BrotDome(BaseDome, IDome):
                 case _:
                     pass
             await asyncio.sleep(1)
-        # send tracking command
-        await self.brot.dome.start_tracking()
-        while True:
-            match self.brot.dome.status:
-                case DomeStatus.TRACKING:
-                    log.info("Dome is tracking the telescope azimuth.")
-                    break
-                case DomeStatus.ERROR:
-                    await self._error_state()
-                    return
-                case _:
-                    pass
-            await asyncio.sleep(1)
+
         await self._change_motion_status(MotionStatus.POSITIONED)
         await self.comm.send_event(RoofOpenedEvent())
 
@@ -132,18 +112,7 @@ class BrotDome(BaseDome, IDome):
 
         await self._change_motion_status(MotionStatus.PARKING)
         await self.comm.send_event(RoofClosingEvent())
-        # stop tracking
-        await self.brot.dome.stop_tracking()
-        while True:
-            match self.brot.dome.status:
-                case DomeStatus.TRACKING:
-                    pass
-                case DomeStatus.ERROR:
-                    await self._error_state()
-                    return
-                case _:
-                    break
-            await asyncio.sleep(1)
+
         # close shutter
         await self.brot.dome.close()
         while True:
@@ -155,39 +124,14 @@ class BrotDome(BaseDome, IDome):
                     pass
             await asyncio.sleep(1)
 
-        # go to parking position
-        await self.brot.dome.park()
-        while True:
-            match self.brot.dome.status:
-                case DomeStatus.PARKED:
-                    log.info("Dome is parked.")
-                    break
-                case DomeStatus.ERROR:
-                    await self._error_state()
-                    return
-                case _:
-                    pass
-            await asyncio.sleep(1)
         await self._change_motion_status(MotionStatus.PARKED)
 
     async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
         pass  # no stopping of the roof possible
-
-    async def move_altaz(self, alt: float, az: float, **kwargs: Any) -> None:
-        """Moves to given coordinates.
-
-        Args:
-            alt: Alt in deg to move to.
-            az: Az in deg to move to.
-
-        Raises:
-            MoveError: If device could not be moved.
-        """
-        pass
 
     async def _error_state(self, mess: str = "Dome is in error state.") -> None:
         log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
 
 
-__all__ = ["BrotDome"]
+__all__ = ["BrotRoof"]
