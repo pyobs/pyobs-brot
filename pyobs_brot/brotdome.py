@@ -78,6 +78,8 @@ class BrotDome(BaseDome, IDome):
                     new_state = MotionStatus.POSITIONED
                 if new_state != current_state:
                     await self._change_motion_status(new_state)
+            except asyncio.CancelledError:
+                return
             except:
                 pass
             await asyncio.sleep(1)
