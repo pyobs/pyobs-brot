@@ -71,15 +71,9 @@ class BrotRoof(BaseRoof):
 
         # send open command
         await self.brot.roof.open()
-
-        while True:
-            match self.brot.roof.shutter:
-                case RoofStatus.OPEN:
-                    log.info("Roof is open.")
-                    break
-                case _:
-                    pass
+        while self.brot.roof.status != RoofStatus.OPEN:
             await asyncio.sleep(1)
+        log.info("Roof is open.")
 
         await self._change_motion_status(MotionStatus.POSITIONED)
         await self.comm.send_event(RoofOpenedEvent())
@@ -95,16 +89,11 @@ class BrotRoof(BaseRoof):
         await self._change_motion_status(MotionStatus.PARKING)
         await self.comm.send_event(RoofClosingEvent())
 
-        # close shutter
+        # close roof
         await self.brot.roof.close()
-        while True:
-            match self.brot.roof.shutter:
-                case RoofStatus.CLOSED:
-                    log.info("Roof is closed.")
-                    break
-                case _:
-                    pass
+        while self.brot.roof.status != RoofStatus.CLOSED:
             await asyncio.sleep(1)
+        log.info("Roof is closed.")
 
         await self._change_motion_status(MotionStatus.PARKED)
 
