@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-brot"
-version = "0.1.1"
+version = "0.1.2"
 description = "pyobs module for BROTlib telescopes"
 authors = [{ name = "Tim-Oliver Husser", email = "thusser@uni-goettingen.de" }, { name = "Lukas Melzig", email = "lukas.melzig@stud.uni-goettingen.de" }]
 requires-python = ">=3.11"
