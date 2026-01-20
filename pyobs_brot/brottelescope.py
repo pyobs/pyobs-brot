@@ -382,10 +382,12 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         await self.brot.telescope.set_offset_alt(dalt * 3600)
         await self.brot.telescope.set_offset_az(daz * 3600)
 
+        await asyncio.sleep(1.0)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE < MAX_TARGET_DISTANCE and
-               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE < MAX_TARGET_DISTANCE):
+        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE > MAX_TARGET_DISTANCE and
+               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE):
             await asyncio.sleep(0.1)
+
 
     async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
         """Get Alt/Az offset.
