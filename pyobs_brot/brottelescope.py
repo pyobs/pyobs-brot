@@ -369,6 +369,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         BrotBaseTelescope.__init__(self, **kwargs)
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
+    @timeout(120)
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
         """Move an Alt/Az offset.
 
