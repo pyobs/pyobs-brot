@@ -103,7 +103,7 @@ class BrotBaseTelescope(
 
         if self.brot.telescope.motion_state == MotionState.SLEWING:
             await self._change_motion_status(MotionStatus.SLEWING)
-        if self.brot.telescope.motion_state == MotionState.TRACKING:
+        elif self.brot.telescope.motion_state == MotionState.TRACKING:
             await self._change_motion_status(MotionStatus.TRACKING)
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
