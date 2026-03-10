@@ -80,6 +80,7 @@ class BrotBaseTelescope(
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
+        self.mqtt.close()
 
     async def _update_task(self) -> None:
         await asyncio.sleep(2)
