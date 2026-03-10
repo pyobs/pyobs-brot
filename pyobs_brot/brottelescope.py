@@ -23,7 +23,7 @@ from pyobs.utils.time import Time
 
 from pybrotlib.transport import MQTTTransport  # type: ignore
 from pybrotlib import BROT  # type: ignore
-from pybrotlib.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
+from pybrotlib.components.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -385,10 +385,11 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
 
         await asyncio.sleep(1.0)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE > MAX_TARGET_DISTANCE or
-               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE):
+        while (
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE > MAX_TARGET_DISTANCE
+            or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE
+        ):
             await asyncio.sleep(0.1)
-
 
     async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
         """Get Alt/Az offset.
