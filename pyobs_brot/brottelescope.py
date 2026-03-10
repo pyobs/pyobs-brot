@@ -135,8 +135,6 @@ class BrotBaseTelescope(
 
     @timeout(5 * 60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
         # send command
         await self.brot.telescope.track(ra, dec)
         await asyncio.sleep(10)
@@ -147,13 +145,11 @@ class BrotBaseTelescope(
                 while True:
                     match await dome.get_motion_status():
                         case MotionStatus.POSITIONED:
-                            await self._change_motion_status(MotionStatus.TRACKING)
                             return
                         case MotionStatus.ERROR:
                             await self._error_state("The dome experienced an error during track command.")
                             return
                         case MotionStatus.PARKED:
-                            await self._change_motion_status(MotionStatus.TRACKING)
                             log.info("The dome is parked, tracking but not onsky.")
                             return
                     await asyncio.sleep(1)
@@ -162,8 +158,6 @@ class BrotBaseTelescope(
 
     @timeout(120)
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
         # send command
         await self.brot.telescope.move(alt, az)
         await asyncio.sleep(5)
@@ -242,19 +236,17 @@ class BrotBaseTelescope(
                 pass
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online.")
-                await self._change_motion_status(MotionStatus.POSITIONED)
                 return
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be initialized, it has errors.")
                 return
-        await self._change_motion_status(MotionStatus.INITIALIZING)
+
         log.info("Initializing telescope...")
         # send command
         await self.brot.telescope.power_on()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 1.0:
-                    await self._change_motion_status(MotionStatus.POSITIONED)
                     log.info("Telescope powered up and initialized.")
                     return
                 case -1.0:
@@ -278,14 +270,13 @@ class BrotBaseTelescope(
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be parked, it has errors.")
                 return
-        await self._change_motion_status(MotionStatus.PARKING)
+
         log.info("Parking telescope...")
         # send command
         await self.brot.telescope.park()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 0.0:
-                    await self._change_motion_status(MotionStatus.PARKED)
                     log.info("Parked telescope.")
                     return
                 case -1.0:
