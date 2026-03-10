@@ -23,7 +23,7 @@ from pyobs.utils.time import Time
 
 from pybrotlib.transport import MQTTTransport  # type: ignore
 from pybrotlib import BROT  # type: ignore
-from pybrotlib.components.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
+from pybrotlib.components.telescope import TelescopeStatus, GlobalTelescopeStatus, MotionState  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -62,17 +62,8 @@ class BrotBaseTelescope(
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
-        # check whats up
-        match self.brot.telescope.status:
-            case TelescopeStatus.PARKED | TelescopeStatus.INITPARK:
-                await self._change_motion_status(MotionStatus.PARKED)
-            case TelescopeStatus.ONLINE:
-                log.info("Telescope is already online. Please make sure it is not used by another instance!")
-                await self._change_motion_status(MotionStatus.POSITIONED)
-            case TelescopeStatus.ERROR:
-                await self._error_state()
-        if self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE == 8:
-            await self._change_motion_status(MotionStatus.TRACKING)
+        await self._update_task()
+
         if self._dome != "None":
             # check dome
             try:
@@ -89,6 +80,31 @@ class BrotBaseTelescope(
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
+
+    async def _update_task(self) -> None:
+        await asyncio.sleep(2)
+        while True:
+            await self._update()
+            await asyncio.sleep(0.1)
+
+    async def _update(self) -> None:
+        # check what's up
+        match self.brot.telescope.status:
+            case TelescopeStatus.PARKED:
+                await self._change_motion_status(MotionStatus.PARKED)
+            case TelescopeStatus.INITIALIZING:
+                await self._change_motion_status(MotionStatus.INITIALIZING)
+            case TelescopeStatus.PARKING:
+                await self._change_motion_status(MotionStatus.PARKING)
+            case TelescopeStatus.ONLINE:
+                await self._change_motion_status(MotionStatus.POSITIONED)
+            case TelescopeStatus.ERROR:
+                await self._error_state()
+
+        if self.brot.telescope.motion_state == MotionState.SLEWING:
+            await self._change_motion_status(MotionStatus.SLEWING)
+        if self.brot.telescope.motion_state == MotionState.TRACKING:
+            await self._change_motion_status(MotionStatus.TRACKING)
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
