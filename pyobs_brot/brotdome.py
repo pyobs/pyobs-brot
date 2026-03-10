@@ -9,8 +9,8 @@ from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 
 from pybrotlib import BROT
-from pybrotlib.mqtttransport import MQTTTransport
-from pybrotlib.dome import DomeStatus, DomeShutterStatus
+from pybrotlib.transport import MQTTTransport
+from pybrotlib.components.dome import DomeStatus, DomeShutterStatus
 
 log = logging.getLogger(__name__)
 
