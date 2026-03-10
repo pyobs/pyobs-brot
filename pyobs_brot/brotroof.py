@@ -8,8 +8,8 @@ from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 
 from pybrotlib import BROT
-from pybrotlib.mqtttransport import MQTTTransport
-from pybrotlib.roof import RoofStatus
+from pybrotlib.transport import MQTTTransport
+from pybrotlib.components.roof import RoofStatus
 
 log = logging.getLogger(__name__)
 
