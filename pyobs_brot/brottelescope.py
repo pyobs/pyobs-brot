@@ -21,8 +21,8 @@ from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
 
-from pybrotlib.mqtttransport import MQTTTransport  # type: ignore
-from pybrotlib import Transport, BROT  # type: ignore
+from pybrotlib.transport import MQTTTransport  # type: ignore
+from pybrotlib import BROT  # type: ignore
 from pybrotlib.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
 
 log = logging.getLogger(__name__)
