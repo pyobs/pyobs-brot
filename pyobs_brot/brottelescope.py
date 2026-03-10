@@ -97,14 +97,14 @@ class BrotBaseTelescope(
             case TelescopeStatus.PARKING:
                 await self._change_motion_status(MotionStatus.PARKING)
             case TelescopeStatus.ONLINE:
-                await self._change_motion_status(MotionStatus.POSITIONED)
+                if self.brot.telescope.motion_state == MotionState.SLEWING:
+                    await self._change_motion_status(MotionStatus.SLEWING)
+                elif self.brot.telescope.motion_state == MotionState.TRACKING:
+                    await self._change_motion_status(MotionStatus.TRACKING)
+                else:
+                    await self._change_motion_status(MotionStatus.POSITIONED)
             case TelescopeStatus.ERROR:
                 await self._error_state()
-
-        if self.brot.telescope.motion_state == MotionState.SLEWING:
-            await self._change_motion_status(MotionStatus.SLEWING)
-        elif self.brot.telescope.motion_state == MotionState.TRACKING:
-            await self._change_motion_status(MotionStatus.TRACKING)
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
