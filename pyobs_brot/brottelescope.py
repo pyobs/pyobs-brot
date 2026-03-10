@@ -84,8 +84,11 @@ class BrotBaseTelescope(
     async def _update_task(self) -> None:
         await asyncio.sleep(2)
         while True:
-            await self._update()
-            await asyncio.sleep(0.1)
+            try:
+                await self._update()
+                await asyncio.sleep(0.1)
+            except asyncio.CancelledError:
+                break
 
     async def _update(self) -> None:
         # check what's up
