@@ -42,6 +42,7 @@ class BrotBaseTelescope(
         host: str,
         name: str,
         port: int = 1883,
+        temperatures: dict[str, str] | None = None,
         keepalive: int = 60,
         roof: str = "None",
         dome: str = "None",
@@ -51,6 +52,7 @@ class BrotBaseTelescope(
 
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
+        self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self.focus_offset = 0.0
         self._dome = dome
         self._roof = roof
@@ -210,7 +212,12 @@ class BrotBaseTelescope(
         Returns:
             Dict containing temperatures.
         """
-        return {}
+        data: dict[str, float] = {}
+        for name, loc in self.temperatures.items():
+            for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
+                if sensor.NAME == loc:
+                    data[name] = sensor.VALUE
+        return data
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")

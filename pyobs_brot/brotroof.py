@@ -80,7 +80,7 @@ class BrotRoof(BaseRoof):
 
     @timeout(300)
     async def park(self, **kwargs: Any) -> None:
-        if self.brot.roof.status == RoofStatus.PARKED:
+        if self.brot.roof.status == RoofStatus.CLOSED:
             return
         elif self.brot.roof.status == RoofStatus.ERROR:
             await self._error_state("Roof is in error state. Cannot close.")
