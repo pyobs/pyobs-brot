@@ -219,17 +219,22 @@ class BrotBaseTelescope(
                     data[name] = sensor.VALUE
         return data
 
+    async def _wait_for_focus(self) -> None:
+        MAX_TARGET_DISTANCE = 0.01
+        while self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE > MAX_TARGET_DISTANCE:
+            await asyncio.sleep(0.1)
+
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         await self.brot.focus.set(focus + self.focus_offset)
-        await asyncio.sleep(2)
+        await self._wait_for_focus()
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         focus = self.brot.focus.position
         await self.brot.focus.set(focus + offset)
-        await asyncio.sleep(2)
+        await self._wait_for_focus()
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def get_focus(self, **kwargs: Any) -> float:
