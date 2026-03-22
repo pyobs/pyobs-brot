@@ -220,6 +220,7 @@ class BrotBaseTelescope(
         return data
 
     async def _wait_for_focus(self) -> None:
+        await asyncio.sleep(2.0)
         MAX_TARGET_DISTANCE = 0.01
         while self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE > MAX_TARGET_DISTANCE:
             await asyncio.sleep(0.1)
