@@ -98,7 +98,7 @@ class BrotRoof(BaseRoof):
         await self._change_motion_status(MotionStatus.PARKED)
 
     async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
-        pass
+        await self.brot.roof.stop()
 
     async def _error_state(self, mess: str = "Roof is in error state.") -> None:
         log.error(mess)

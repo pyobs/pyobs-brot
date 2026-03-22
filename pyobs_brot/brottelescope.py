@@ -213,14 +213,17 @@ class BrotBaseTelescope(
         return {}
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         await self.brot.focus.set(focus + self.focus_offset)
         await asyncio.sleep(2)
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
-        # get current focus position
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         focus = self.brot.focus.position
         await self.brot.focus.set(focus + offset)
         await asyncio.sleep(2)
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def get_focus(self, **kwargs: Any) -> float:
         return float(self.brot.focus.position - self.focus_offset)
