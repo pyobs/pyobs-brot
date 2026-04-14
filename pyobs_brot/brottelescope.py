@@ -323,11 +323,20 @@ class BrotBaseTelescope(
             await asyncio.sleep(1)
 
     async def is_ready(self, **kwargs: Any) -> bool:
-        match self.brot.telescope.global_status:
-            case GlobalTelescopeStatus.OPERATIONAL:
-                return True
-            case GlobalTelescopeStatus.PANIC | GlobalTelescopeStatus.ERROR | _:
-                return False
+        """Returns the device is "ready", whatever that means for the specific device.
+
+        Returns:
+            Whether device is ready
+        """
+
+        # check that motion is not in one of the states listed below
+        return await self.get_motion_status() not in [
+            MotionStatus.PARKED,
+            MotionStatus.INITIALIZING,
+            MotionStatus.PARKING,
+            MotionStatus.ERROR,
+            MotionStatus.UNKNOWN,
+        ]
 
 
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
