@@ -8,8 +8,8 @@ from pyobs.modules import timeout
 from pyobs.utils.enums import MotionStatus
 
 from pybrotlib import BROT
-from pybrotlib.mqtttransport import MQTTTransport
-from pybrotlib.roof import RoofStatus
+from pybrotlib.transport import MQTTTransport
+from pybrotlib.components.roof import RoofStatus
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class BrotRoof(BaseRoof):
 
     @timeout(300)
     async def park(self, **kwargs: Any) -> None:
-        if self.brot.roof.status == RoofStatus.PARKED:
+        if self.brot.roof.status == RoofStatus.CLOSED:
             return
         elif self.brot.roof.status == RoofStatus.ERROR:
             await self._error_state("Roof is in error state. Cannot close.")
@@ -98,7 +98,7 @@ class BrotRoof(BaseRoof):
         await self._change_motion_status(MotionStatus.PARKED)
 
     async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
-        pass
+        await self.brot.roof.stop()
 
     async def _error_state(self, mess: str = "Roof is in error state.") -> None:
         log.error(mess)

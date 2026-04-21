@@ -21,9 +21,9 @@ from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
 
-from pybrotlib.mqtttransport import MQTTTransport  # type: ignore
-from pybrotlib import Transport, BROT  # type: ignore
-from pybrotlib.telescope import TelescopeStatus, GlobalTelescopeStatus  # type: ignore
+from pybrotlib.transport import MQTTTransport  # type: ignore
+from pybrotlib import BROT  # type: ignore
+from pybrotlib.components.telescope import TelescopeStatus, GlobalTelescopeStatus, MotionState  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class BrotBaseTelescope(
         host: str,
         name: str,
         port: int = 1883,
+        temperatures: dict[str, str] | None = None,
         keepalive: int = 60,
         roof: str = "None",
         dome: str = "None",
@@ -51,6 +52,7 @@ class BrotBaseTelescope(
 
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
+        self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self.focus_offset = 0.0
         self._dome = dome
         self._roof = roof
@@ -62,17 +64,8 @@ class BrotBaseTelescope(
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
-        # check whats up
-        match self.brot.telescope.status:
-            case TelescopeStatus.PARKED | TelescopeStatus.INITPARK:
-                await self._change_motion_status(MotionStatus.PARKED)
-            case TelescopeStatus.ONLINE:
-                log.info("Telescope is already online. Please make sure it is not used by another instance!")
-                await self._change_motion_status(MotionStatus.POSITIONED)
-            case TelescopeStatus.ERROR:
-                await self._error_state()
-        if self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE == 8:
-            await self._change_motion_status(MotionStatus.TRACKING)
+        await self._update_task()
+
         if self._dome != "None":
             # check dome
             try:
@@ -89,6 +82,35 @@ class BrotBaseTelescope(
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
+        self.mqtt.close()
+
+    async def _update_task(self) -> None:
+        await asyncio.sleep(2)
+        while True:
+            try:
+                await self._update()
+                await asyncio.sleep(0.1)
+            except asyncio.CancelledError:
+                break
+
+    async def _update(self) -> None:
+        # check what's up
+        match self.brot.telescope.status:
+            case TelescopeStatus.PARKED:
+                await self._change_motion_status(MotionStatus.PARKED)
+            case TelescopeStatus.INITIALIZING:
+                await self._change_motion_status(MotionStatus.INITIALIZING)
+            case TelescopeStatus.PARKING:
+                await self._change_motion_status(MotionStatus.PARKING)
+            case TelescopeStatus.ONLINE:
+                if self.brot.telescope.motion_state == MotionState.SLEWING:
+                    await self._change_motion_status(MotionStatus.SLEWING)
+                elif self.brot.telescope.motion_state == MotionState.TRACKING:
+                    await self._change_motion_status(MotionStatus.TRACKING)
+                else:
+                    await self._change_motion_status(MotionStatus.POSITIONED)
+            case TelescopeStatus.ERROR:
+                await self._error_state()
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
@@ -115,8 +137,6 @@ class BrotBaseTelescope(
 
     @timeout(5 * 60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
         # send command
         await self.brot.telescope.track(ra, dec)
         await asyncio.sleep(10)
@@ -127,13 +147,11 @@ class BrotBaseTelescope(
                 while True:
                     match await dome.get_motion_status():
                         case MotionStatus.POSITIONED:
-                            await self._change_motion_status(MotionStatus.TRACKING)
                             return
                         case MotionStatus.ERROR:
                             await self._error_state("The dome experienced an error during track command.")
                             return
                         case MotionStatus.PARKED:
-                            await self._change_motion_status(MotionStatus.TRACKING)
                             log.info("The dome is parked, tracking but not onsky.")
                             return
                     await asyncio.sleep(1)
@@ -142,8 +160,6 @@ class BrotBaseTelescope(
 
     @timeout(120)
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
-        # change to slewing
-        await self._change_motion_status(MotionStatus.SLEWING)
         # send command
         await self.brot.telescope.move(alt, az)
         await asyncio.sleep(5)
@@ -196,17 +212,31 @@ class BrotBaseTelescope(
         Returns:
             Dict containing temperatures.
         """
-        return {}
+        data: dict[str, float] = {}
+        for name, loc in self.temperatures.items():
+            for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
+                if sensor.NAME == loc:
+                    data[name] = sensor.VALUE
+        return data
+
+    async def _wait_for_focus(self) -> None:
+        await asyncio.sleep(2.0)
+        MAX_TARGET_DISTANCE = 0.01
+        while self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE > MAX_TARGET_DISTANCE:
+            await asyncio.sleep(0.1)
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         await self.brot.focus.set(focus + self.focus_offset)
-        await asyncio.sleep(2)
+        await self._wait_for_focus()
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
-        # get current focus position
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         focus = self.brot.focus.position
         await self.brot.focus.set(focus + offset)
-        await asyncio.sleep(2)
+        await self._wait_for_focus()
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
 
     async def get_focus(self, **kwargs: Any) -> float:
         return float(self.brot.focus.position - self.focus_offset)
@@ -222,19 +252,17 @@ class BrotBaseTelescope(
                 pass
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online.")
-                await self._change_motion_status(MotionStatus.POSITIONED)
                 return
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be initialized, it has errors.")
                 return
-        await self._change_motion_status(MotionStatus.INITIALIZING)
+
         log.info("Initializing telescope...")
         # send command
         await self.brot.telescope.power_on()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 1.0:
-                    await self._change_motion_status(MotionStatus.POSITIONED)
                     log.info("Telescope powered up and initialized.")
                     return
                 case -1.0:
@@ -258,14 +286,13 @@ class BrotBaseTelescope(
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be parked, it has errors.")
                 return
-        await self._change_motion_status(MotionStatus.PARKING)
+
         log.info("Parking telescope...")
         # send command
         await self.brot.telescope.park()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 0.0:
-                    await self._change_motion_status(MotionStatus.PARKED)
                     log.info("Parked telescope.")
                     return
                 case -1.0:
@@ -296,11 +323,20 @@ class BrotBaseTelescope(
             await asyncio.sleep(1)
 
     async def is_ready(self, **kwargs: Any) -> bool:
-        match self.brot.telescope.global_status:
-            case GlobalTelescopeStatus.OPERATIONAL:
-                return True
-            case GlobalTelescopeStatus.PANIC | GlobalTelescopeStatus.ERROR | _:
-                return False
+        """Returns the device is "ready", whatever that means for the specific device.
+
+        Returns:
+            Whether device is ready
+        """
+
+        # check that motion is not in one of the states listed below
+        return await self.get_motion_status() not in [
+            MotionStatus.PARKED,
+            MotionStatus.INITIALIZING,
+            MotionStatus.PARKING,
+            MotionStatus.ERROR,
+            MotionStatus.UNKNOWN,
+        ]
 
 
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
@@ -377,6 +413,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         BrotBaseTelescope.__init__(self, **kwargs)
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
+    @timeout(120)
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
         """Move an Alt/Az offset.
 
@@ -390,9 +427,12 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         await self.brot.telescope.set_offset_alt(dalt * 3600)
         await self.brot.telescope.set_offset_az(daz * 3600)
 
+        await asyncio.sleep(1.0)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE < MAX_TARGET_DISTANCE and
-               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE < MAX_TARGET_DISTANCE):
+        while (
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE > MAX_TARGET_DISTANCE
+            or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE
+        ):
             await asyncio.sleep(0.1)
 
     async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
