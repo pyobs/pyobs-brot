@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "astropy>=7.0.1,<8",
-    "pyobs-core>=1,<2",
+    "pyobs-core>=1.42.0,<2",
     "paho-mqtt>=2.1.0",
     "pybrotlib>=0.2.0",
 ]
