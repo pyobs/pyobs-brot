@@ -1,13 +1,13 @@
 [project]
 name = "pyobs-brot"
-version = "0.1.20"
+version = "0.2.0"
 description = "pyobs module for BROTlib telescopes"
 authors = [{ name = "Tim-Oliver Husser", email = "thusser@uni-goettingen.de" }, { name = "Lukas Melzig", email = "lukas.melzig@stud.uni-goettingen.de" }]
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "astropy>=7.0.1,<8",
-    "pyobs-core>=1,<2",
+    "pyobs-core>=1.42.0,<2",
     "paho-mqtt>=2.1.0",
     "pybrotlib>=0.2.0",
 ]

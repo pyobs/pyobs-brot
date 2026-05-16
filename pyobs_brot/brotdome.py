@@ -35,8 +35,8 @@ class BrotDome(BaseDome, IDome):
         await BaseDome.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
-        await self.comm.register_event(RoofOpenedEvent)
-        await self.comm.register_event(RoofClosingEvent)
+        await self._comm.register_event(RoofOpenedEvent)
+        await self._comm.register_event(RoofClosingEvent)
         # check whats up
         if self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state()
@@ -120,7 +120,7 @@ class BrotDome(BaseDome, IDome):
                     pass
             await asyncio.sleep(1)
         await self._change_motion_status(MotionStatus.POSITIONED)
-        await self.comm.send_event(RoofOpenedEvent())
+        await self._comm.send_event(RoofOpenedEvent())
 
     @timeout(300)
     async def park(self, **kwargs: Any) -> None:
@@ -131,7 +131,7 @@ class BrotDome(BaseDome, IDome):
             return
 
         await self._change_motion_status(MotionStatus.PARKING)
-        await self.comm.send_event(RoofClosingEvent())
+        await self._comm.send_event(RoofClosingEvent())
         # stop tracking
         await self.brot.dome.stop_tracking()
         while True:

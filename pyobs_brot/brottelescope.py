@@ -202,8 +202,8 @@ class BrotBaseTelescope(
 
     async def get_radec(self, **kwargs: Any) -> tuple[float, float]:
         return (
-            self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_J2000 * 15,
-            self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_J2000,
+            self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15,
+            self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS,
         )
 
     async def get_temperatures(self, **kwargs: Any) -> dict[str, float]:
@@ -352,6 +352,10 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         # send dra as dha
         await self.brot.telescope.set_offset_ha(-1.0 * dra * 3600)
         await self.brot.telescope.set_offset_dec(ddec * 3600)
+        MAX_TARGET_DISTANCE = 2.0 / 3600.0
+        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE < MAX_TARGET_DISTANCE and
+               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE < MAX_TARGET_DISTANCE):
+            await asyncio.sleep(0.1)
 
     async def get_offsets_radec(self, **kwargs: Any) -> tuple[float, float]:
         return (
@@ -386,14 +390,18 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         telemetry = self.brot.telescope._telemetry
         data = {
             "Time": Time.now().isot,
-            "Ha": telemetry.OBJECT.EQUATORIAL.HA,
-            "Dec": telemetry.OBJECT.EQUATORIAL.DEC,
-            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC))
+            "Ha": telemetry.OBJECT.EQUATORIAL.HA_APPARENT,
+            "Dec": telemetry.OBJECT.EQUATORIAL.DEC_APPARENT,
+            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC_APPARENT))
             + telemetry.POINTING.OFFSETS.HA,
             "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
         }
         await self._pointing_log(**data)
         log.info("Pointing measurement written.")
+    async def start_pointing_series(self, **kwargs: Any) -> None:
+        pass
+    async def stop_pointing_series(self, **kwargs: Any) -> None:
+        pass
 
 
 class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
