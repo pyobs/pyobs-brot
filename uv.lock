@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -1807,7 +1807,7 @@ dev = [
 requires-dist = [
     { name = "astropy", specifier = ">=7.0.1,<8" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
-    { name = "pybrotlib", specifier = ">=0.2.0" },
+    { name = "pybrotlib", specifier = ">=0.3.11" },
     { name = "pyobs-core", specifier = ">=1.42.0,<2" },
 ]
 

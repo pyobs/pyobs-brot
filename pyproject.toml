@@ -9,7 +9,7 @@ dependencies = [
     "astropy>=7.0.1,<8",
     "pyobs-core>=1.42.0,<2",
     "paho-mqtt>=2.1.0",
-    "pybrotlib>=0.2.0",
+    "pybrotlib>=0.3.11",
 ]
 
 [dependency-groups]
@@ -25,4 +25,4 @@ build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 120
-target-version = ['py311']
+target-version = ['py313']
