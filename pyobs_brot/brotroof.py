@@ -33,8 +33,8 @@ class BrotRoof(BaseRoof):
         await BaseRoof.open(self)
         asyncio.create_task(self.mqtt.run())
 
-        await self._comm.register_event(RoofOpenedEvent)
-        await self._comm.register_event(RoofClosingEvent)
+        await self.comm.register_event(RoofOpenedEvent)
+        await self.comm.register_event(RoofClosingEvent)
 
     async def _update_status_task(self) -> None:
         while True:
@@ -76,7 +76,7 @@ class BrotRoof(BaseRoof):
         log.info("Roof is open.")
 
         await self._change_motion_status(MotionStatus.POSITIONED)
-        await self._comm.send_event(RoofOpenedEvent())
+        await self.comm.send_event(RoofOpenedEvent())
 
     @timeout(300)
     async def park(self, **kwargs: Any) -> None:
@@ -87,7 +87,7 @@ class BrotRoof(BaseRoof):
             return
 
         await self._change_motion_status(MotionStatus.PARKING)
-        await self._comm.send_event(RoofClosingEvent())
+        await self.comm.send_event(RoofClosingEvent())
 
         # close roof
         await self.brot.roof.close()
