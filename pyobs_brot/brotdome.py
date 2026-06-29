@@ -6,7 +6,7 @@ from pybrotlib import BROT
 from pybrotlib.components.dome import DomeShutterStatus, DomeStatus
 from pybrotlib.transport import MQTTTransport
 from pyobs.events import RoofClosingEvent, RoofOpenedEvent
-from pyobs.interfaces import IDome, IPointingAltAz
+from pyobs.interfaces import AltAzState, IDome, IPointingAltAz
 from pyobs.modules import timeout
 from pyobs.modules.roof.basedome import BaseDome
 from pyobs.utils.enums import MotionStatus
@@ -34,7 +34,7 @@ class BrotDome(BaseDome, IDome):
         await asyncio.sleep(2)
         await self.comm.register_event(RoofOpenedEvent)
         await self.comm.register_event(RoofClosingEvent)
-        await self.comm.set_state(IPointingAltAz.State(alt=0.0, az=self.brot.dome.azimuth))
+        await self.comm.set_state(IPointingAltAz, AltAzState(alt=0.0, az=self.brot.dome.azimuth))
         if self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state()
         elif self.brot.dome.in_motion:
@@ -66,7 +66,7 @@ class BrotDome(BaseDome, IDome):
                     new_state = MotionStatus.POSITIONED
                 if new_state != current_state:
                     await self._change_motion_status(new_state)
-                await self.comm.set_state(IPointingAltAz.State(alt=0.0, az=self.brot.dome.azimuth))
+                await self.comm.set_state(IPointingAltAz, AltAzState(alt=0.0, az=self.brot.dome.azimuth))
             except asyncio.CancelledError:
                 return
             except Exception:

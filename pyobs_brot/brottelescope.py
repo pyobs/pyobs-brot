@@ -7,6 +7,9 @@ from pybrotlib import BROT  # type: ignore
 from pybrotlib.components.telescope import MotionState, TelescopeStatus  # type: ignore
 from pybrotlib.transport import MQTTTransport  # type: ignore
 from pyobs.interfaces import (
+    AltAzOffsetState,
+    AltAzState,
+    FocuserState,
     IFocuser,
     IOffsetsAltAz,
     IOffsetsRaDec,
@@ -15,6 +18,11 @@ from pyobs.interfaces import (
     IPointingSeries,
     IReady,
     ITemperatures,
+    RaDecOffsetState,
+    RaDecState,
+    ReadyState,
+    SensorReading,
+    TemperaturesState,
 )
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.modules import timeout
@@ -77,10 +85,10 @@ class BrotBaseTelescope(
         await asyncio.sleep(2)
 
         # publish initial states
-        await self.comm.set_state(IReady.State(ready=False))
-        await self.comm.set_state(IFocuser.State(focus=float(self.brot.focus.position), focus_offset=self.focus_offset))
-        await self.comm.set_state(IOffsetsRaDec.State(ra=0.0, dec=0.0))
-        await self.comm.set_state(IOffsetsAltAz.State(alt=0.0, az=0.0))
+        await self.comm.set_state(IReady, ReadyState(ready=False))
+        await self.comm.set_state(IFocuser, FocuserState(focus=float(self.brot.focus.position), focus_offset=self.focus_offset))
+        await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=0.0, dec=0.0))
+        await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=0.0, az=0.0))
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
@@ -99,13 +107,13 @@ class BrotBaseTelescope(
         match self.brot.telescope.status:
             case TelescopeStatus.PARKED:
                 await self._change_motion_status(MotionStatus.PARKED)
-                await self.comm.set_state(IReady.State(ready=False))
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.INITIALIZING:
                 await self._change_motion_status(MotionStatus.INITIALIZING)
-                await self.comm.set_state(IReady.State(ready=False))
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.PARKING:
                 await self._change_motion_status(MotionStatus.PARKING)
-                await self.comm.set_state(IReady.State(ready=False))
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.ONLINE:
                 if self.brot.telescope.motion_state == MotionState.SLEWING:
                     await self._change_motion_status(MotionStatus.SLEWING)
@@ -113,27 +121,27 @@ class BrotBaseTelescope(
                     await self._change_motion_status(MotionStatus.TRACKING)
                 else:
                     await self._change_motion_status(MotionStatus.POSITIONED)
-                await self.comm.set_state(IReady.State(ready=True))
+                await self.comm.set_state(IReady, ReadyState(ready=True))
             case TelescopeStatus.ERROR:
                 await self._error_state()
-                await self.comm.set_state(IReady.State(ready=False))
+                await self.comm.set_state(IReady, ReadyState(ready=False))
 
         # publish pointing state
         ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15
         dec = self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS
-        await self.comm.set_state(IPointingRaDec.State(ra=ra, dec=dec))
+        await self.comm.set_state(IPointingRaDec, RaDecState(ra=ra, dec=dec))
         alt = self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT
         az = self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
-        await self.comm.set_state(IPointingAltAz.State(alt=alt, az=az))
+        await self.comm.set_state(IPointingAltAz, AltAzState(alt=alt, az=az))
 
         # publish temperatures
         readings = []
         for name, loc in self.temperatures.items():
             for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
                 if sensor.NAME == loc:
-                    readings.append(ITemperatures.Temperature(name=name, value=sensor.VALUE))
+                    readings.append(SensorReading(name=name, value=sensor.VALUE))
         if readings:
-            await self.comm.set_state(ITemperatures.State(readings=readings))
+            await self.comm.set_state(ITemperatures, TemperaturesState(readings=readings))
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
@@ -180,7 +188,7 @@ class BrotBaseTelescope(
         await self.brot.focus.set(focus + self.focus_offset)
         await self._wait_for_focus()
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
-        await self.comm.set_state(IFocuser.State(focus=focus, focus_offset=self.focus_offset))
+        await self.comm.set_state(IFocuser, FocuserState(focus=focus, focus_offset=self.focus_offset))
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
@@ -190,7 +198,7 @@ class BrotBaseTelescope(
         self.focus_offset = offset
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
         await self.comm.set_state(
-            IFocuser.State(focus=float(self.brot.focus.position - self.focus_offset), focus_offset=offset)
+            IFocuser, FocuserState(focus=float(self.brot.focus.position - self.focus_offset), focus_offset=offset)
         )
 
     async def _wait_for_focus(self) -> None:
@@ -291,7 +299,7 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
             and self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE < MAX_TARGET_DISTANCE
         ):
             await asyncio.sleep(0.1)
-        await self.comm.set_state(IOffsetsRaDec.State(ra=dra, dec=ddec))
+        await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=dra, dec=ddec))
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
@@ -338,7 +346,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE
         ):
             await asyncio.sleep(0.1)
-        await self.comm.set_state(IOffsetsAltAz.State(alt=dalt, az=daz))
+        await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=dalt, az=daz))
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
