@@ -86,7 +86,9 @@ class BrotBaseTelescope(
 
         # publish initial states
         await self.comm.set_state(IReady, ReadyState(ready=False))
-        await self.comm.set_state(IFocuser, FocuserState(focus=float(self.brot.focus.position), focus_offset=self.focus_offset))
+        await self.comm.set_state(
+            IFocuser, FocuserState(focus=float(self.brot.focus.position), focus_offset=self.focus_offset)
+        )
         await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=0.0, dec=0.0))
         await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=0.0, az=0.0))
 
@@ -363,8 +365,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             "Time": Time.now().isot,
             "Az": telemetry.OBJECT.HORIZONTAL.AZ,
             "Alt": telemetry.OBJECT.HORIZONTAL.ALT,
-            "AzOff": telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET
-            / np.cos(np.radians(telemetry.POSITION.HORIZONTAL.ALT))
+            "AzOff": telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET / np.cos(np.radians(telemetry.POSITION.HORIZONTAL.ALT))
             + telemetry.POINTING.OFFSETS.AZ,
             "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
         }
