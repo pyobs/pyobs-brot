@@ -84,7 +84,7 @@ class BrotBaseTelescope(
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
-        self.mqtt.close()
+        await self.mqtt.close()
 
     async def _update_task(self) -> None:
         await asyncio.sleep(2)
@@ -202,7 +202,7 @@ class BrotBaseTelescope(
     @timeout(120)
     async def init(self, **kwargs: Any) -> None:
         match self.brot.telescope.status:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
+            case TelescopeStatus.PARKED:
                 pass
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online.")
@@ -228,7 +228,7 @@ class BrotBaseTelescope(
     @timeout(180)
     async def park(self, **kwargs: Any) -> None:
         match self.brot.telescope.status:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
+            case TelescopeStatus.PARKED:
                 log.info("Telescope is already parked.")
                 return
             case TelescopeStatus.ONLINE:
@@ -313,7 +313,8 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
             + telemetry.POINTING.OFFSETS.HA,
             "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
         }
-        await self._pointing_log(**data)
+        if self._pointing_log is not None:
+            await self._pointing_log(**data)
         log.info("Pointing measurement written.")
 
 
@@ -359,7 +360,8 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             + telemetry.POINTING.OFFSETS.AZ,
             "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
         }
-        await self._pointing_log(**data)
+        if self._pointing_log is not None:
+            await self._pointing_log(**data)
         log.info("Pointing measurement written.")
 
 
