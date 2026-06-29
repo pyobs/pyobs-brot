@@ -110,7 +110,7 @@ class BrotDome(BaseDome, IDome):
 
     @timeout(300)
     async def park(self, **kwargs: Any) -> None:
-        if self.brot.dome.status == DomeStatus.PARKED and self.brot.some.shutter == DomeShutterStatus.CLOSED:
+        if self.brot.dome.status == DomeStatus.PARKED and self.brot.dome.shutter == DomeShutterStatus.CLOSED:
             return
         elif self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state("Dome is in error state. Cannot close/park.")
