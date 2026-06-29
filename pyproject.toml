@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "astropy>=7.0.1,<8",
-    "pyobs-core>=1.42.0,<2",
+    "pyobs-core>=2.0.0.dev1",
     "paho-mqtt>=2.1.0",
     "pybrotlib>=1.0.0",
 ]
@@ -15,8 +15,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=23.7.0,<24",
+    "ruff>=0.9.0",
     "pre-commit>=3.3.3,<4",
-    "flake8>=7.3.0",
 ]
 
 [build-system]
@@ -25,4 +25,14 @@ build-backend = "hatchling.build"
 
 [tool.black]
 line-length = 120
-target-version = ['py313']
+target-version = ['py311']
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "G"]
+
+[tool.pyrefly]
+python-version = "3.11"
