@@ -2,14 +2,13 @@ import asyncio
 import logging
 from typing import Any
 
-from pyobs.events import RoofOpenedEvent, RoofClosingEvent
-from pyobs.modules.roof.baseroof import BaseRoof
-from pyobs.modules import timeout
-from pyobs.utils.enums import MotionStatus
-
 from pybrotlib import BROT
-from pybrotlib.transport import MQTTTransport
 from pybrotlib.components.roof import RoofStatus
+from pybrotlib.transport import MQTTTransport
+from pyobs.events import RoofClosingEvent, RoofOpenedEvent
+from pyobs.modules import timeout
+from pyobs.modules.roof.baseroof import BaseRoof
+from pyobs.utils.enums import MotionStatus
 
 log = logging.getLogger(__name__)
 
