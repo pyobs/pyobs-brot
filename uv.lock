@@ -1805,7 +1805,7 @@ requires-dist = [
     { name = "astropy", specifier = ">=7.0.1,<8" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "pybrotlib", specifier = ">=1.0.0" },
-    { name = "pyobs-core", specifier = ">=2.0.0.dev1" },
+    { name = "pyobs-core", specifier = ">=2.0.0.dev5,<3" },
 ]
 
 [package.metadata.requires-dev]
@@ -1818,7 +1818,7 @@ dev = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.0.0.dev3"
+version = "2.0.0.dev5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1847,9 +1847,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6c/a9/3e0a1f7311d6d0afec90a9fede87b63e9c74c15a5fb7513ffec8509b0bcc/pyobs_core-2.0.0.dev3.tar.gz", hash = "sha256:b530ccfc4c84522b4a123260c7a03d7fdb62ab0fd0faea7af255ae064ea2b323", size = 296675, upload-time = "2026-06-29T14:14:13.961Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/63/80/cacb30a7f9f4cad8ab3c4c64d5dec86e485d5f951099f2e14b05f2e8a60c/pyobs_core-2.0.0.dev5.tar.gz", hash = "sha256:d65b91ebd3a9e8e0ab54aa7f21970f4bfa7025eea49dbb1aa56c436e82c53c0e", size = 297626, upload-time = "2026-06-30T08:11:37.744Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/d3/2913a249a12cd009455282dd472cdcbecd52f9f02c13cb17bd9a7474def7/pyobs_core-2.0.0.dev3-py3-none-any.whl", hash = "sha256:4d65492daf81ae34267fe7105b99449061be0f46fe018b1646f1f143d616b53b", size = 504786, upload-time = "2026-06-29T14:14:11.974Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/ae/3fb978f20fed81c64de2f92b683cfdea266f769cb2f50cdf05f6b0e063ea/pyobs_core-2.0.0.dev5-py3-none-any.whl", hash = "sha256:afaf5a6c19b5b5e0979bf6f6880fd6e74fb88d4f8e6d175dbd527156c85403c3", size = 505762, upload-time = "2026-06-30T08:11:35.776Z" },
 ]
 
 [[package]]
