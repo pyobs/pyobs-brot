@@ -1,29 +1,35 @@
 import asyncio
 import logging
 from typing import Any
-import numpy as np
 
-from pyobs.mixins import FitsNamespaceMixin
+import numpy as np
+from pybrotlib import BROT  # type: ignore
+from pybrotlib.components.telescope import MotionState, TelescopeStatus  # type: ignore
+from pybrotlib.transport import MQTTTransport  # type: ignore
 from pyobs.interfaces import (
-    IRoof,
-    IDome,
+    AltAzOffsetState,
+    AltAzState,
+    FocuserState,
     IFocuser,
-    ITemperatures,
     IOffsetsAltAz,
     IOffsetsRaDec,
-    IPointingSeries,
-    IPointingRaDec,
     IPointingAltAz,
+    IPointingRaDec,
+    IPointingSeries,
+    IReady,
+    ITemperatures,
+    RaDecOffsetState,
+    RaDecState,
+    ReadyState,
+    SensorReading,
+    TemperaturesState,
 )
-from pyobs.modules.telescope.basetelescope import BaseTelescope
+from pyobs.mixins import FitsNamespaceMixin
 from pyobs.modules import timeout
+from pyobs.modules.telescope.basetelescope import BaseTelescope
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
-
-from pybrotlib.transport import MQTTTransport  # type: ignore
-from pybrotlib import BROT  # type: ignore
-from pybrotlib.components.telescope import TelescopeStatus, GlobalTelescopeStatus, MotionState  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -48,41 +54,47 @@ class BrotBaseTelescope(
         dome: str = "None",
         **kwargs: Any,
     ):
-        BaseTelescope.__init__(self, **kwargs, motion_status_interfaces=["ITelescope", "IFocuser"])
+        BaseTelescope.__init__(
+            self,
+            **kwargs,
+            motion_status_interfaces=["ITelescope", "IFocuser"],
+            wait_for_dome=None if dome == "None" else dome,
+        )
 
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
         self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self.focus_offset = 0.0
-        self._dome = dome
         self._roof = roof
 
-        # mixins
         FitsNamespaceMixin.__init__(self, **kwargs)
+        self.add_background_task(self._update_task)
+
+    @property
+    def _position_radec(self) -> tuple[float, float] | None:
+        try:
+            ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15
+            dec = self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS
+            return ra, dec
+        except Exception:
+            return None
 
     async def open(self) -> None:
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
         await asyncio.sleep(2)
-        await self._update_task()
 
-        if self._dome != "None":
-            # check dome
-            try:
-                await self.proxy(self._dome, IDome)
-                log.info("Dome was found.")
-            except ValueError:
-                log.warning("Dome does not exist or is not of correct type at the moment.")
-        if self._roof != "None":
-            # check dome
-            try:
-                await self.proxy(self._roof, IRoof)
-            except ValueError:
-                log.warning("Roof does not exist or is not of correct type at the moment.")
+        # publish initial states
+        await self.comm.set_state(IReady, ReadyState(ready=False))
+        await self.comm.set_state(
+            IFocuser, FocuserState(focus=float(self.brot.focus.position), focus_offset=self.focus_offset)
+        )
+        await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=0.0, dec=0.0))
+        await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=0.0, az=0.0))
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
-        self.mqtt.close()
+        await self.mqtt.close()
 
     async def _update_task(self) -> None:
         await asyncio.sleep(2)
@@ -94,14 +106,16 @@ class BrotBaseTelescope(
                 break
 
     async def _update(self) -> None:
-        # check what's up
         match self.brot.telescope.status:
             case TelescopeStatus.PARKED:
                 await self._change_motion_status(MotionStatus.PARKED)
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.INITIALIZING:
                 await self._change_motion_status(MotionStatus.INITIALIZING)
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.PARKING:
                 await self._change_motion_status(MotionStatus.PARKING)
+                await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.ONLINE:
                 if self.brot.telescope.motion_state == MotionState.SLEWING:
                     await self._change_motion_status(MotionStatus.SLEWING)
@@ -109,26 +123,41 @@ class BrotBaseTelescope(
                     await self._change_motion_status(MotionStatus.TRACKING)
                 else:
                     await self._change_motion_status(MotionStatus.POSITIONED)
+                await self.comm.set_state(IReady, ReadyState(ready=True))
             case TelescopeStatus.ERROR:
                 await self._error_state()
+                await self.comm.set_state(IReady, ReadyState(ready=False))
+
+        # publish pointing state
+        ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15
+        dec = self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS
+        await self.comm.set_state(IPointingRaDec, RaDecState(ra=ra, dec=dec))
+        alt = self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT
+        az = self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
+        await self.comm.set_state(IPointingAltAz, AltAzState(alt=alt, az=az))
+
+        # publish temperatures
+        readings = []
+        for name, loc in self.temperatures.items():
+            for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
+                if sensor.NAME == loc:
+                    readings.append(SensorReading(name=name, value=sensor.VALUE))
+        if readings:
+            await self.comm.set_state(ITemperatures, TemperaturesState(readings=readings))
 
     async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
         log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
-        return
 
     async def _wait_for_tracking(self) -> None:
         await asyncio.sleep(2)
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
                 case 0.0, 1.0:
-                    # still moving
                     pass
                 case 8.0:
-                    # tracking -> exit
                     return
                 case -1.0:
-                    # something went wrong
                     await self._error_state("The telescope experienced an error during track command.")
                     return
                 case _:
@@ -137,30 +166,12 @@ class BrotBaseTelescope(
 
     @timeout(5 * 60)
     async def _move_radec(self, ra: float, dec: float, abort_event: asyncio.Event) -> None:
-        # send command
         await self.brot.telescope.track(ra, dec)
         await asyncio.sleep(10)
         await self._wait_for_tracking()
-        if self._dome != "None":
-            try:
-                dome = await self.proxy(self._dome, IDome)
-                while True:
-                    match await dome.get_motion_status():
-                        case MotionStatus.POSITIONED:
-                            return
-                        case MotionStatus.ERROR:
-                            await self._error_state("The dome experienced an error during track command.")
-                            return
-                        case MotionStatus.PARKED:
-                            log.info("The dome is parked, tracking but not onsky.")
-                            return
-                    await asyncio.sleep(1)
-            except:
-                log.warning("Dome module cannot be reached.")
 
     @timeout(120)
     async def _move_altaz(self, alt: float, az: float, abort_event: asyncio.Event) -> None:
-        # send command
         await self.brot.telescope.move(alt, az)
         await asyncio.sleep(5)
         while True:
@@ -168,56 +179,29 @@ class BrotBaseTelescope(
                 case 0.0, 1.0:
                     break
                 case 1.0, 8.0:
-                    # still moving
                     pass
                 case _:
-                    # something went wrong
                     await self._change_motion_status(MotionStatus.ERROR)
                     return
             await asyncio.sleep(1)
-        if self._dome != "None":
-            try:
-                dome = await self.proxy(self._dome, IDome)
-                while True:
-                    match await dome.get_motion_status():
-                        case MotionStatus.POSITIONED:
-                            await self._change_motion_status(MotionStatus.POSITIONED)
-                            return
-                        case MotionStatus.ERROR:
-                            await self._error_state("The dome experienced an error during track command.")
-                            return
-                        case MotionStatus.PARKED:
-                            await self._change_motion_status(MotionStatus.POSITIONED)
-                            log.info("The dome is parked, tracking but not onsky.")
-                            return
-                    await asyncio.sleep(1)
-            except:
-                log.warning("Dome module cannot be reached.")
 
-    async def get_altaz(self, **kwargs: Any) -> tuple[float, float]:
-        return (
-            self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT,
-            self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ,
+    async def set_focus(self, focus: float, **kwargs: Any) -> None:
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
+        await self.brot.focus.set(focus + self.focus_offset)
+        await self._wait_for_focus()
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
+        await self.comm.set_state(IFocuser, FocuserState(focus=focus, focus_offset=self.focus_offset))
+
+    async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
+        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
+        focus = self.brot.focus.position
+        await self.brot.focus.set(focus + offset)
+        await self._wait_for_focus()
+        self.focus_offset = offset
+        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
+        await self.comm.set_state(
+            IFocuser, FocuserState(focus=float(self.brot.focus.position - self.focus_offset), focus_offset=offset)
         )
-
-    async def get_radec(self, **kwargs: Any) -> tuple[float, float]:
-        return (
-            self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15,
-            self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS,
-        )
-
-    async def get_temperatures(self, **kwargs: Any) -> dict[str, float]:
-        """Returns all temperatures measured by this module.
-
-        Returns:
-            Dict containing temperatures.
-        """
-        data: dict[str, float] = {}
-        for name, loc in self.temperatures.items():
-            for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
-                if sensor.NAME == loc:
-                    data[name] = sensor.VALUE
-        return data
 
     async def _wait_for_focus(self) -> None:
         await asyncio.sleep(2.0)
@@ -225,30 +209,10 @@ class BrotBaseTelescope(
         while self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE > MAX_TARGET_DISTANCE:
             await asyncio.sleep(0.1)
 
-    async def set_focus(self, focus: float, **kwargs: Any) -> None:
-        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
-        await self.brot.focus.set(focus + self.focus_offset)
-        await self._wait_for_focus()
-        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
-
-    async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
-        await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
-        focus = self.brot.focus.position
-        await self.brot.focus.set(focus + offset)
-        await self._wait_for_focus()
-        await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
-
-    async def get_focus(self, **kwargs: Any) -> float:
-        return float(self.brot.focus.position - self.focus_offset)
-
-    async def get_focus_offset(self, **kwargs: Any) -> float:
-        return self.focus_offset
-
     @timeout(120)
     async def init(self, **kwargs: Any) -> None:
-        # check whats up
         match self.brot.telescope.status:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
+            case TelescopeStatus.PARKED:
                 pass
             case TelescopeStatus.ONLINE:
                 log.info("Telescope is already online.")
@@ -258,7 +222,6 @@ class BrotBaseTelescope(
                 return
 
         log.info("Initializing telescope...")
-        # send command
         await self.brot.telescope.power_on()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
@@ -266,19 +229,16 @@ class BrotBaseTelescope(
                     log.info("Telescope powered up and initialized.")
                     return
                 case -1.0:
-                    # something went wrong
                     await self._error_state("Error during powerup of telescope.")
                     return
                 case 0.0:
-                    # still moving
                     pass
             await asyncio.sleep(1)
 
     @timeout(180)
     async def park(self, **kwargs: Any) -> None:
-        # check whats up
         match self.brot.telescope.status:
-            case TelescopeStatus.PARKED, TelescopeStatus.INITPARK:
+            case TelescopeStatus.PARKED:
                 log.info("Telescope is already parked.")
                 return
             case TelescopeStatus.ONLINE:
@@ -288,7 +248,6 @@ class BrotBaseTelescope(
                 return
 
         log.info("Parking telescope...")
-        # send command
         await self.brot.telescope.park()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
@@ -296,17 +255,14 @@ class BrotBaseTelescope(
                     log.info("Parked telescope.")
                     return
                 case -1.0:
-                    # something went wrong
                     await self._error_state("Error during parking of the telescope.")
                     return
                 case _:
-                    # still moving
                     pass
             await asyncio.sleep(1)
 
     @timeout(20)
     async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
-        # send command
         await self.brot.telescope.stop()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.MOTION_STATE:
@@ -314,29 +270,17 @@ class BrotBaseTelescope(
                     log.info("Stopped telescope.")
                     return
                 case 1.0 | 8.0:
-                    # still going
                     pass
                 case _:
-                    # error
                     await self._error_state("Error during stopping of the telescope.")
                     return
             await asyncio.sleep(1)
 
-    async def is_ready(self, **kwargs: Any) -> bool:
-        """Returns the device is "ready", whatever that means for the specific device.
+    async def start_pointing_series(self, **kwargs: Any) -> None:
+        pass
 
-        Returns:
-            Whether device is ready
-        """
-
-        # check that motion is not in one of the states listed below
-        return await self.get_motion_status() not in [
-            MotionStatus.PARKED,
-            MotionStatus.INITIALIZING,
-            MotionStatus.PARKING,
-            MotionStatus.ERROR,
-            MotionStatus.UNKNOWN,
-        ]
+    async def stop_pointing_series(self, **kwargs: Any) -> None:
+        pass
 
 
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
@@ -349,41 +293,23 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
-        # send dra as dha
         await self.brot.telescope.set_offset_ha(-1.0 * dra * 3600)
         await self.brot.telescope.set_offset_dec(ddec * 3600)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE < MAX_TARGET_DISTANCE and
-               self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE < MAX_TARGET_DISTANCE):
+        while (
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE < MAX_TARGET_DISTANCE
+            and self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE < MAX_TARGET_DISTANCE
+        ):
             await asyncio.sleep(0.1)
-
-    async def get_offsets_radec(self, **kwargs: Any) -> tuple[float, float]:
-        return (
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET * -1.0,
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET,
-        )
+        await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=dra, dec=ddec))
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
     ) -> dict[str, tuple[Any, str]]:
-        """Returns FITS header for the current status of this module.
-
-        Args:
-            namespaces: If given, only return FITS headers for the given namespaces.
-
-        Returns:
-            Dictionary containing FITS headers.
-        """
-
-        # get headers from base
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
-
-        # define values to request
         hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
         hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
-
-        # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
@@ -392,16 +318,14 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
             "Time": Time.now().isot,
             "Ha": telemetry.OBJECT.EQUATORIAL.HA_APPARENT,
             "Dec": telemetry.OBJECT.EQUATORIAL.DEC_APPARENT,
-            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC_APPARENT))
+            "HaOff": telemetry.POSITION.INSTRUMENTAL.HA.OFFSET
+            / np.cos(np.radians(telemetry.OBJECT.EQUATORIAL.DEC_APPARENT))
             + telemetry.POINTING.OFFSETS.HA,
             "DecOff": telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET + telemetry.POINTING.OFFSETS.DEC,
         }
-        await self._pointing_log(**data)
+        if self._pointing_log is not None:
+            await self._pointing_log(**data)
         log.info("Pointing measurement written.")
-    async def start_pointing_series(self, **kwargs: Any) -> None:
-        pass
-    async def stop_pointing_series(self, **kwargs: Any) -> None:
-        pass
 
 
 class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
@@ -415,18 +339,8 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
 
     @timeout(120)
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
-        """Move an Alt/Az offset.
-
-        Args:
-            dalt: Altitude offset in degrees.
-            daz: Azimuth offset in degrees.
-
-        Raises:
-            MoveError: If device could not be moved.
-        """
         await self.brot.telescope.set_offset_alt(dalt * 3600)
         await self.brot.telescope.set_offset_az(daz * 3600)
-
         await asyncio.sleep(1.0)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
         while (
@@ -434,39 +348,15 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE
         ):
             await asyncio.sleep(0.1)
-
-    async def get_offsets_altaz(self, **kwargs: Any) -> tuple[float, float]:
-        """Get Alt/Az offset.
-
-        Returns:
-            Tuple with alt and az offsets.
-        """
-        return (
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET,
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.OFFSET,
-        )
+        await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=dalt, az=daz))
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
     ) -> dict[str, tuple[Any, str]]:
-        """Returns FITS header for the current status of this module.
-
-        Args:
-            namespaces: If given, only return FITS headers for the given namespaces.
-
-        Returns:
-            Dictionary containing FITS headers.
-        """
-
-        # get headers from base
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
-
-        # define values to request
         hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
         hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
-
-        # return it
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
@@ -479,7 +369,8 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
             + telemetry.POINTING.OFFSETS.AZ,
             "AltOff": telemetry.POSITION.INSTRUMENTAL.ALT.OFFSET + telemetry.POINTING.OFFSETS.ALT,
         }
-        await self._pointing_log(**data)
+        if self._pointing_log is not None:
+            await self._pointing_log(**data)
         log.info("Pointing measurement written.")
 
 
