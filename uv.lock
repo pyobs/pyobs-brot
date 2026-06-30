@@ -204,11 +204,11 @@ wheels = [
 
 [[package]]
 name = "astropy-iers-data"
-version = "0.2026.5.11.1.8.52"
+version = "0.2026.6.22.1.23.34"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1e/a1/186ae52e05fe90cb9a02f6fa27201e066b91d951fe6d32cd5220def2f1dd/astropy_iers_data-0.2026.5.11.1.8.52.tar.gz", hash = "sha256:11d7d6caa141d1ab14196a645672989f25014cbf97d97940c407f278e26b400d", size = 1933045, upload-time = "2026-05-11T01:09:38.884Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/3c/534eb2ec8c29efbb46cd4986392e92177a055780468a86d5e3f921f75bca/astropy_iers_data-0.2026.6.22.1.23.34.tar.gz", hash = "sha256:15e12a6863a366ff4a4d246087afb75f71a00d1fed86b9fd6d86f29a71809d38", size = 1939323, upload-time = "2026-06-22T01:24:09.888Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/77/22a4fd8774e04aa2599fe02637b3cea107ac5234745ae91dbd3e7a8349dd/astropy_iers_data-0.2026.5.11.1.8.52-py3-none-any.whl", hash = "sha256:40c449c35bd8deabc20053f024f3d4c0cbea2947adf620fcbb6f4242b55e2090", size = 1989748, upload-time = "2026-05-11T01:09:36.91Z" },
+    { url = "https://files.pythonhosted.org/packages/97/1e/75767a712dd23740273560df5b9dcd203362f5e5c6bea846d99a7175e233/astropy_iers_data-0.2026.6.22.1.23.34-py3-none-any.whl", hash = "sha256:d96f5102426e7ba5f28d7aabf417a547d912482afa97c24430f5c9fe9b6a884d", size = 1994066, upload-time = "2026-06-22T01:24:08.609Z" },
 ]
 
 [[package]]
@@ -1805,7 +1805,7 @@ requires-dist = [
     { name = "astropy", specifier = ">=7.0.1,<8" },
     { name = "paho-mqtt", specifier = ">=2.1.0" },
     { name = "pybrotlib", specifier = ">=1.0.0" },
-    { name = "pyobs-core", specifier = ">=2.0.0.dev5,<3" },
+    { name = "pyobs-core", specifier = ">=2.0.0.dev6,<3" },
 ]
 
 [package.metadata.requires-dev]
@@ -1818,12 +1818,13 @@ dev = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.0.0.dev5"
+version = "2.0.0.dev6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "astroplan" },
     { name = "astropy" },
+    { name = "astropy-iers-data" },
     { name = "astropydantic" },
     { name = "astroquery" },
     { name = "colour" },
@@ -1847,9 +1848,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/80/cacb30a7f9f4cad8ab3c4c64d5dec86e485d5f951099f2e14b05f2e8a60c/pyobs_core-2.0.0.dev5.tar.gz", hash = "sha256:d65b91ebd3a9e8e0ab54aa7f21970f4bfa7025eea49dbb1aa56c436e82c53c0e", size = 297626, upload-time = "2026-06-30T08:11:37.744Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/1f/f3ff220ff8cc908198a130f98aacb2bd0c9963befd9d0757bcff13800f84/pyobs_core-2.0.0.dev6.tar.gz", hash = "sha256:ee8f98c4299064a2383666b349cf87af98f9c3de437048e8b56dcb2817e0024b", size = 299899, upload-time = "2026-06-30T17:39:36.203Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/ae/3fb978f20fed81c64de2f92b683cfdea266f769cb2f50cdf05f6b0e063ea/pyobs_core-2.0.0.dev5-py3-none-any.whl", hash = "sha256:afaf5a6c19b5b5e0979bf6f6880fd6e74fb88d4f8e6d175dbd527156c85403c3", size = 505762, upload-time = "2026-06-30T08:11:35.776Z" },
+    { url = "https://files.pythonhosted.org/packages/17/b6/3875a77f1206ef5d02d5ac43ae9fd90ba96be7857fe4308dfc0c599eec16/pyobs_core-2.0.0.dev6-py3-none-any.whl", hash = "sha256:542a78b069cac525cc72b9fc5fce8983629f8f0a240ff5ee722617886a8c9c13", size = 508486, upload-time = "2026-06-30T17:39:34.739Z" },
 ]
 
 [[package]]
