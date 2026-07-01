@@ -1783,7 +1783,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-brot"
-version = "2.0.0.dev1"
+version = "2.0.0.dev2"
 source = { editable = "." }
 dependencies = [
     { name = "astropy" },
