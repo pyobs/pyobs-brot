@@ -186,6 +186,9 @@ class BrotBaseTelescope(
                     return
             await asyncio.sleep(1)
 
+    async def _set_tracking_rate(self, ra_rate: float, dec_rate: float) -> None:
+        raise NotImplementedError
+
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         await self.brot.focus.set(focus + self.focus_offset)
