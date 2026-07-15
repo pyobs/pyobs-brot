@@ -9,6 +9,7 @@ from pybrotlib.transport import MQTTTransport  # type: ignore
 from pyobs.interfaces import (
     AltAzOffsetState,
     AltAzState,
+    FitsHeaderEntry,
     FocuserState,
     IFocuser,
     IOffsetsAltAz,
@@ -185,6 +186,9 @@ class BrotBaseTelescope(
                     return
             await asyncio.sleep(1)
 
+    async def _set_tracking_rate(self, ra_rate: float, dec_rate: float) -> None:
+        raise NotImplementedError
+
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         await self.brot.focus.set(focus + self.focus_offset)
@@ -305,11 +309,12 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
-    ) -> dict[str, tuple[Any, str]]:
+    ) -> dict[str, FitsHeaderEntry]:
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
-        hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
-        hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
-        hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
+        tel = self.brot.telescope._telemetry
+        hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
+        hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
+        hdr["DECOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
@@ -352,11 +357,12 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
 
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
-    ) -> dict[str, tuple[Any, str]]:
+    ) -> dict[str, FitsHeaderEntry]:
+        tel = self.brot.telescope._telemetry
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
-        hdr["TEL-FOCU"] = (self.brot.focus.position, "Focus position [mm]")
-        hdr["HAOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
-        hdr["DECOFF"] = (self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
+        hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
+        hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
+        hdr["DECOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
         return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
