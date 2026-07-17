@@ -8,6 +8,7 @@ from pybrotlib.transport import MQTTTransport
 from pyobs.events import RoofClosingEvent, RoofOpenedEvent
 from pyobs.modules import timeout
 from pyobs.modules.roof.baseroof import BaseRoof
+from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 
 log = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class BrotRoof(BaseRoof):
             return
         elif self.brot.roof.status == RoofStatus.ERROR:
             await self._error_state("Roof is in error state. Cannot open.")
-            return
+            raise exc.InitError("Roof is in error state. Cannot open.")
 
         await self._change_motion_status(MotionStatus.INITIALIZING)
 
@@ -83,7 +84,7 @@ class BrotRoof(BaseRoof):
             return
         elif self.brot.roof.status == RoofStatus.ERROR:
             await self._error_state("Roof is in error state. Cannot close.")
-            return
+            raise exc.ParkError("Roof is in error state. Cannot close.")
 
         await self._change_motion_status(MotionStatus.PARKING)
         await self.comm.send_event(RoofClosingEvent())

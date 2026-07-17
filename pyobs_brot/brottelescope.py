@@ -28,6 +28,7 @@ from pyobs.interfaces import (
 from pyobs.mixins import FitsNamespaceMixin
 from pyobs.modules import timeout
 from pyobs.modules.telescope.basetelescope import BaseTelescope
+from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
@@ -223,7 +224,7 @@ class BrotBaseTelescope(
                 return
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be initialized, it has errors.")
-                return
+                raise exc.InitError("Telescope can not be initialized, it has errors.")
 
         log.info("Initializing telescope...")
         await self.brot.telescope.power_on()
@@ -234,7 +235,7 @@ class BrotBaseTelescope(
                     return
                 case -1.0:
                     await self._error_state("Error during powerup of telescope.")
-                    return
+                    raise exc.InitError("Error during powerup of telescope.")
                 case 0.0:
                     pass
             await asyncio.sleep(1)
@@ -249,7 +250,7 @@ class BrotBaseTelescope(
                 pass
             case TelescopeStatus.ERROR:
                 await self._error_state("Telescope can not be parked, it has errors.")
-                return
+                raise exc.ParkError("Telescope can not be parked, it has errors.")
 
         log.info("Parking telescope...")
         await self.brot.telescope.park()
@@ -260,7 +261,7 @@ class BrotBaseTelescope(
                     return
                 case -1.0:
                     await self._error_state("Error during parking of the telescope.")
-                    return
+                    raise exc.ParkError("Error during parking of the telescope.")
                 case _:
                     pass
             await asyncio.sleep(1)
