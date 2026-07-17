@@ -127,7 +127,7 @@ class BrotBaseTelescope(
                     await self._change_motion_status(MotionStatus.POSITIONED)
                 await self.comm.set_state(IReady, ReadyState(ready=True))
             case TelescopeStatus.ERROR:
-                await self._error_state()
+                await self._error_state(log_once=True)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
 
         # publish pointing state
@@ -147,8 +147,9 @@ class BrotBaseTelescope(
         if readings:
             await self.comm.set_state(ITemperatures, TemperaturesState(readings=readings))
 
-    async def _error_state(self, mess: str = "Telescope is in error state.") -> None:
-        log.error(mess)
+    async def _error_state(self, mess: str = "Telescope is in error state.", log_once: bool = False) -> None:
+        if not log_once or self.motion_status() != MotionStatus.ERROR:
+            log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
 
     async def _wait_for_tracking(self) -> None:

@@ -46,7 +46,7 @@ class BrotRoof(BaseRoof):
         # check whats up
         match self.brot.roof.status:
             case RoofStatus.ERROR:
-                await self._error_state()
+                await self._error_state(log_once=True)
             case RoofStatus.CLOSED:
                 await self._change_motion_status(MotionStatus.PARKED)
             case RoofStatus.OPENING:
@@ -100,8 +100,9 @@ class BrotRoof(BaseRoof):
     async def stop_motion(self, device: str | None = None, **kwargs: Any) -> None:
         await self.brot.roof.stop()
 
-    async def _error_state(self, mess: str = "Roof is in error state.") -> None:
-        log.error(mess)
+    async def _error_state(self, mess: str = "Roof is in error state.", log_once: bool = False) -> None:
+        if not log_once or self.motion_status() != MotionStatus.ERROR:
+            log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
 
 
