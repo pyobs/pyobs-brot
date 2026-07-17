@@ -9,6 +9,7 @@ from pyobs.events import RoofClosingEvent, RoofOpenedEvent
 from pyobs.interfaces import AltAzState, IDome, IPointingAltAz
 from pyobs.modules import timeout
 from pyobs.modules.roof.basedome import BaseDome
+from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 
 log = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class BrotDome(BaseDome, IDome):
             return
         elif self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state("Dome is in error state. Cannot open.")
-            return
+            raise exc.InitError("Dome is in error state. Cannot open.")
 
         await self._change_motion_status(MotionStatus.INITIALIZING)
 
@@ -101,7 +102,7 @@ class BrotDome(BaseDome, IDome):
                     break
                 case DomeStatus.ERROR:
                     await self._error_state()
-                    return
+                    raise exc.InitError("Dome entered error state while starting tracking.")
                 case _:
                     pass
             await asyncio.sleep(1)
@@ -114,7 +115,7 @@ class BrotDome(BaseDome, IDome):
             return
         elif self.brot.dome.status == DomeStatus.ERROR:
             await self._error_state("Dome is in error state. Cannot close/park.")
-            return
+            raise exc.ParkError("Dome is in error state. Cannot close/park.")
 
         await self._change_motion_status(MotionStatus.PARKING)
         await self.comm.send_event(RoofClosingEvent())
@@ -125,7 +126,7 @@ class BrotDome(BaseDome, IDome):
                     pass
                 case DomeStatus.ERROR:
                     await self._error_state()
-                    return
+                    raise exc.ParkError("Dome entered error state while stopping tracking.")
                 case _:
                     break
             await asyncio.sleep(1)
@@ -146,7 +147,7 @@ class BrotDome(BaseDome, IDome):
                     break
                 case DomeStatus.ERROR:
                     await self._error_state()
-                    return
+                    raise exc.ParkError("Dome entered error state while parking.")
                 case _:
                     pass
             await asyncio.sleep(1)
