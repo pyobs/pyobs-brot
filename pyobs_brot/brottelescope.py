@@ -138,6 +138,12 @@ class BrotBaseTelescope(
         az = self.brot.telescope._telemetry.POSITION.HORIZONTAL.AZ
         await self.comm.set_state(IPointingAltAz, AltAzState(alt=alt, az=az))
 
+        # publish focus state
+        await self.comm.set_state(
+            IFocuser,
+            FocuserState(focus=float(self.brot.focus.position - self.focus_offset), focus_offset=self.focus_offset),
+        )
+
         # publish temperatures
         readings = []
         for name, loc in self.temperatures.items():
