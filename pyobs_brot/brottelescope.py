@@ -66,6 +66,7 @@ class BrotBaseTelescope(
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
         self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
+        self._missing_temperature_sensors: set[str] = set()
         self.focus_offset = 0.0
         self._roof = roof
 
@@ -146,10 +147,24 @@ class BrotBaseTelescope(
 
         # publish temperatures
         readings = []
+        missing = []
         for name, loc in self.temperatures.items():
+            found = False
             for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
                 if sensor.NAME == loc:
                     readings.append(SensorReading(name=name, value=sensor.VALUE))
+                    found = True
+            if not found:
+                missing.append(f"{name} ({loc})")
+
+        missing_set = set(missing)
+        if missing_set != self._missing_temperature_sensors:
+            if missing_set:
+                log.warning("Temperature sensor(s) not found in telemetry: %s", ", ".join(missing))
+            else:
+                log.info("All configured temperature sensors found in telemetry again.")
+            self._missing_temperature_sensors = missing_set
+
         if readings:
             await self.comm.set_state(ITemperatures, TemperaturesState(readings=readings))
 
