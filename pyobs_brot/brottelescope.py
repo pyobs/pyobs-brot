@@ -95,6 +95,10 @@ class BrotBaseTelescope(
         await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=0.0, dec=0.0))
         await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=0.0, az=0.0))
 
+        # placeholder -- real readings only exist once the MQTT client has had a chance to
+        # receive telemetry, which _update_task() (started above) hasn't had time to do yet
+        await self.comm.set_state(ITemperatures, TemperaturesState(readings=[]))
+
     async def close(self) -> None:
         await BaseTelescope.close(self)
         await self.mqtt.close()
