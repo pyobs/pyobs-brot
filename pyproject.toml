@@ -14,7 +14,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "black>=23.7.0,<24",
+    "black>=23.7.0,<27",
     "ruff>=0.9.0",
     "pyrefly>=1.1.1",
     "pre-commit>=3.3.3,<5",
