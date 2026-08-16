@@ -328,8 +328,8 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         await self.brot.telescope.set_offset_dec(ddec * 3600)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
         while (
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE < MAX_TARGET_DISTANCE
-            and self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE < MAX_TARGET_DISTANCE
+            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE > MAX_TARGET_DISTANCE
+            or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE > MAX_TARGET_DISTANCE
         ):
             await asyncio.sleep(0.1)
         await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=dra, dec=ddec))
