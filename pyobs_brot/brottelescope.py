@@ -333,14 +333,14 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=dra, dec=ddec))
 
     async def get_fits_header_before(
-        self, namespaces: list[str] | None = None, **kwargs: Any
+        self, namespaces: list[str] | None = None, sender: str = "", **kwargs: Any
     ) -> dict[str, FitsHeaderEntry]:
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
         tel = self.brot.telescope._telemetry
         hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
         hdr["DECOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
-        return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
+        return self._filter_fits_namespace(hdr, sender=sender, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
         telemetry = self.brot.telescope._telemetry
@@ -381,14 +381,14 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=dalt, az=daz))
 
     async def get_fits_header_before(
-        self, namespaces: list[str] | None = None, **kwargs: Any
+        self, namespaces: list[str] | None = None, sender: str = "", **kwargs: Any
     ) -> dict[str, FitsHeaderEntry]:
         tel = self.brot.telescope._telemetry
         hdr = await BrotBaseTelescope.get_fits_header_before(self)
         hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
         hdr["DECOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
-        return self._filter_fits_namespace(hdr, namespaces=namespaces, **kwargs)
+        return self._filter_fits_namespace(hdr, sender=sender, namespaces=namespaces, **kwargs)
 
     async def add_pointing_measurement(self, **kwargs: Any) -> None:
         telemetry = self.brot.telescope._telemetry
