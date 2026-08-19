@@ -21,6 +21,26 @@ def test_constructor_defaults() -> None:
     assert telescope._roof == "None"
 
 
+def test_constructor_threads_kwargs_cooperatively() -> None:
+    """Regression test for the cooperative-super()-chain fix: BrotBaseTelescope used to call
+    BaseTelescope.__init__() then a separate, redundant FitsNamespaceMixin.__init__(self,
+    **kwargs) -- BaseTelescope's own cooperative chain already reaches FitsNamespaceMixin (it's
+    the last base), so the second call re-threads the same kwargs (location, comm, ...) through
+    a chain that's now cooperative all the way to object.__init__(), which raises on any
+    leftover. This is exactly the shape deployed in pyobs-monet's telescope configs (host, name,
+    fits_headers, temperatures, comm, location, timezone all set)."""
+    telescope = BrotRaDecTelescope(
+        host="localhost",
+        name="telescope",
+        fits_headers={"TEL-FOCL": (8400.0, "Focal length")},
+        temperatures={"M1": "TEMP_M1"},
+        location={"longitude": 20.81, "latitude": -32.37, "elevation": 1798.0},
+        timezone="Africa/Johannesburg",
+    )
+    assert telescope.motion_status().name == "UNKNOWN"
+    assert telescope.temperatures == {"M1": "TEMP_M1"}
+
+
 def test_constructor_temperatures_and_roof() -> None:
     telescope = BrotRaDecTelescope(
         host="localhost",
