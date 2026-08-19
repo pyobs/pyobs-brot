@@ -56,11 +56,10 @@ class BrotBaseTelescope(
         dome: str = "None",
         **kwargs: Any,
     ):
-        BaseTelescope.__init__(
-            self,
-            **kwargs,
+        super().__init__(
             motion_status_interfaces=["ITelescope", "IFocuser"],
             wait_for_dome=None if dome == "None" else dome,
+            **kwargs,
         )
 
         self.mqtt = MQTTTransport(host, port)
@@ -70,7 +69,6 @@ class BrotBaseTelescope(
         self.focus_offset = 0.0
         self._roof = roof
 
-        FitsNamespaceMixin.__init__(self, **kwargs)
         self.add_background_task(self._update_task)
 
     @property
