@@ -6,7 +6,7 @@ authors = [{ name = "Tim-Oliver Husser", email = "thusser@uni-goettingen.de" }, 
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
-    "astropy>=7.0.1,<8",
+    "astropy>=7.0.1,<9",
     "pyobs-core>=2.0.0,<3",
     "paho-mqtt>=2.1.0",
     "pybrotlib>=1.1.5",
