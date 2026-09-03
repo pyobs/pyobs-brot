@@ -6,7 +6,7 @@ from pybrotlib import BROT
 from pybrotlib.components.dome import DomeShutterStatus, DomeStatus
 from pybrotlib.transport import MQTTTransport
 from pyobs.events import RoofClosingEvent, RoofOpenedEvent
-from pyobs.interfaces import AltAzState, IDome, IPointingAltAz
+from pyobs.interfaces import AltAzState, FitsHeaderEntry, IDome, IPointingAltAz
 from pyobs.modules import timeout
 from pyobs.modules.roof.basedome import BaseDome
 from pyobs.utils import exceptions as exc
@@ -166,6 +166,15 @@ class BrotDome(BaseDome, IDome):
     async def _error_state(self, mess: str = "Dome is in error state.") -> None:
         log.error(mess)
         await self._change_motion_status(MotionStatus.ERROR)
+
+    async def get_fits_header_before(
+        self, namespaces: list[str] | None = None, **kwargs: Any
+    ) -> dict[str, FitsHeaderEntry]:
+        """Returns FITS header for the current status of this module."""
+
+        hdr = await BaseDome.get_fits_header_before(self, namespaces, **kwargs)
+        hdr["DOMESHUT"] = FitsHeaderEntry(self.brot.dome.shutter.name, "Dome shutter status")
+        return hdr
 
 
 __all__ = ["BrotDome"]
