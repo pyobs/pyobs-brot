@@ -76,6 +76,10 @@ class BrotDome(BaseDome, IDome):
 
     @timeout(300)
     async def init(self, **kwargs: Any) -> None:
+        # weather?
+        if not self.is_weather_good():
+            raise exc.InitError("Weather seems to be bad.")
+
         log.info("Opening roof")
         if self.brot.dome.shutter == DomeShutterStatus.OPEN:
             return
