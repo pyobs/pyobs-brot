@@ -66,6 +66,7 @@ class BrotBaseTelescope(
         self.brot = BROT(self.mqtt, name)
         self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self._missing_temperature_sensors: set[str] = set()
+        self._temperature_readings: dict[str, float] = {}
         self.focus_offset = 0.0
         self._roof = roof
 
@@ -155,6 +156,7 @@ class BrotBaseTelescope(
             for sensor in self.mqtt.telemetry.AUXILIARY.SENSOR.values():
                 if sensor.NAME == loc:
                     readings.append(SensorReading(name=name, value=sensor.VALUE))
+                    self._temperature_readings[name] = sensor.VALUE
                     found = True
             if not found:
                 missing.append(f"{name} ({loc})")
@@ -314,6 +316,22 @@ class BrotBaseTelescope(
 
     async def stop_pointing_series(self, **kwargs: Any) -> None:
         pass
+
+    async def get_fits_header_before(
+        self, namespaces: list[str] | None = None, **kwargs: Any
+    ) -> dict[str, FitsHeaderEntry]:
+        hdr = await BaseTelescope.get_fits_header_before(self, namespaces, **kwargs)
+
+        hdr["FOCOFF"] = FitsHeaderEntry(self.focus_offset, "Focus offset [mm]")
+
+        tel = self.brot.telescope._telemetry
+        hdr["PNTHAOF"] = FitsHeaderEntry(tel.POINTING.OFFSETS.HA, "Pointing model HA correction")
+        hdr["PNTDCOF"] = FitsHeaderEntry(tel.POINTING.OFFSETS.DEC, "Pointing model Dec correction")
+
+        for name, value in self._temperature_readings.items():
+            hdr[f"TEMP-{name.upper()}"] = FitsHeaderEntry(value, f"Temperature of {name} sensor [C]")
+
+        return hdr
 
 
 class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
