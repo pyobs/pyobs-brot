@@ -33,6 +33,8 @@ from pyobs.utils.enums import MotionStatus
 from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
 
+from ._settle import check_settling_alive, wait_until_settled
+
 log = logging.getLogger(__name__)
 
 
@@ -190,6 +192,7 @@ class BrotBaseTelescope(
                     return
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
 
     @timeout(5 * 60)
@@ -211,6 +214,7 @@ class BrotBaseTelescope(
                 case _:
                     await self._change_motion_status(MotionStatus.ERROR)
                     return
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
 
     async def _set_tracking_rate(self, ra_rate: float, dec_rate: float) -> None:
@@ -218,27 +222,33 @@ class BrotBaseTelescope(
 
     async def set_focus(self, focus: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
-        await self.brot.focus.set(focus + self.focus_offset)
-        await self._wait_for_focus()
+        target = focus + self.focus_offset
+        await self.brot.focus.set(target)
+        await self._wait_for_focus(target)
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
         await self.comm.set_state(IFocuser, FocuserState(focus=focus, focus_offset=self.focus_offset))
 
     async def set_focus_offset(self, offset: float, **kwargs: Any) -> None:
         await self._change_motion_status(MotionStatus.SLEWING, interface="IFocuser")
         focus = self.brot.focus.position
-        await self.brot.focus.set(focus + offset)
-        await self._wait_for_focus()
+        target = focus + offset
+        await self.brot.focus.set(target)
+        await self._wait_for_focus(target)
         self.focus_offset = offset
         await self._change_motion_status(MotionStatus.POSITIONED, interface="IFocuser")
         await self.comm.set_state(
             IFocuser, FocuserState(focus=float(self.brot.focus.position - self.focus_offset), focus_offset=offset)
         )
 
-    async def _wait_for_focus(self) -> None:
+    async def _wait_for_focus(self, target: float) -> None:
         await asyncio.sleep(2.0)
         MAX_TARGET_DISTANCE = 0.01
-        while self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE > MAX_TARGET_DISTANCE:
-            await asyncio.sleep(0.1)
+        await wait_until_settled(
+            lambda: self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.FOCUS.TARGETDISTANCE <= MAX_TARGET_DISTANCE,
+            self.mqtt,
+            resend=lambda: self.brot.focus.set(target),
+            poll_interval=0.1,
+        )
 
     @timeout(120)
     async def init(self, **kwargs: Any) -> None:
@@ -268,6 +278,7 @@ class BrotBaseTelescope(
                     raise exc.InitError("Error during powerup of telescope.")
                 case 0.0:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
 
     @timeout(180)
@@ -294,6 +305,7 @@ class BrotBaseTelescope(
                     raise exc.ParkError("Error during parking of the telescope.")
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
 
     @timeout(20)
@@ -309,6 +321,7 @@ class BrotBaseTelescope(
                 case _:
                     await self._error_state("Error during stopping of the telescope.")
                     return
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
 
     async def start_pointing_series(self, **kwargs: Any) -> None:
@@ -344,14 +357,24 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
         self._pointing_log = None if pointing_file is None else CsvPublisher(pointing_file)
 
     async def set_offsets_radec(self, dra: float, ddec: float, **kwargs: Any) -> None:
-        await self.brot.telescope.set_offset_ha(-1.0 * dra * 3600)
-        await self.brot.telescope.set_offset_dec(ddec * 3600)
+        ha_offset = -1.0 * dra * 3600
+        dec_offset = ddec * 3600
+
+        async def resend() -> None:
+            await self.brot.telescope.set_offset_ha(ha_offset)
+            await self.brot.telescope.set_offset_dec(dec_offset)
+
+        await resend()
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE > MAX_TARGET_DISTANCE
-            or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE > MAX_TARGET_DISTANCE
-        ):
-            await asyncio.sleep(0.1)
+        await wait_until_settled(
+            lambda: (
+                self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.HA.TARGETDISTANCE <= MAX_TARGET_DISTANCE
+                and self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.DEC.TARGETDISTANCE <= MAX_TARGET_DISTANCE
+            ),
+            self.mqtt,
+            resend=resend,
+            poll_interval=0.1,
+        )
         await self.comm.set_state(IOffsetsRaDec, RaDecOffsetState(ra=dra, dec=ddec))
 
     async def get_fits_header_before(
@@ -391,15 +414,25 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
 
     @timeout(120)
     async def set_offsets_altaz(self, dalt: float, daz: float, **kwargs: Any) -> None:
-        await self.brot.telescope.set_offset_alt(dalt * 3600)
-        await self.brot.telescope.set_offset_az(daz * 3600)
+        alt_offset = dalt * 3600
+        az_offset = daz * 3600
+
+        async def resend() -> None:
+            await self.brot.telescope.set_offset_alt(alt_offset)
+            await self.brot.telescope.set_offset_az(az_offset)
+
+        await resend()
         await asyncio.sleep(1.0)
         MAX_TARGET_DISTANCE = 2.0 / 3600.0
-        while (
-            self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE > MAX_TARGET_DISTANCE
-            or self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE > MAX_TARGET_DISTANCE
-        ):
-            await asyncio.sleep(0.1)
+        await wait_until_settled(
+            lambda: (
+                self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.ALT.TARGETDISTANCE <= MAX_TARGET_DISTANCE
+                and self.brot.telescope._telemetry.POSITION.INSTRUMENTAL.AZ.TARGETDISTANCE <= MAX_TARGET_DISTANCE
+            ),
+            self.mqtt,
+            resend=resend,
+            poll_interval=0.1,
+        )
         await self.comm.set_state(IOffsetsAltAz, AltAzOffsetState(alt=dalt, az=daz))
 
     async def get_fits_header_before(

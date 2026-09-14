@@ -15,3 +15,9 @@ Relevant so far:
 - `pyobs-core/specs/plans/enforce-state-publishing.md` — the state-publishing convention every
   `Module` follows; `BrotRaDecTelescope`'s `ITemperatures` state had the same gap this doc's
   convention exists to catch (2026-07-27 addendum).
+- `pyBROT`'s own `specs/plans/mqtt-reconnect.md` (`BROTLib/pyBROT`, not this repo) — `MQTTTransport`
+  auto-reconnect fix closing #68; `pyobs-brot`'s `pybrotlib` floor bumped to `>=1.2.1` and released
+  as 2.0.3 to match.
+- `pyobs-core/specs/plans/2026-09-14-brot-settle-loop-staleness-and-resend.md` — shared
+  `wait_until_settled()` helper for telescope/dome/roof settle loops (staleness detection + setpoint
+  resend), addressing #61.
