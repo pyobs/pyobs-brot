@@ -11,6 +11,8 @@ from pyobs.modules.roof.baseroof import BaseRoof
 from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 
+from ._settle import wait_until_settled
+
 log = logging.getLogger(__name__)
 
 
@@ -75,8 +77,7 @@ class BrotRoof(BaseRoof):
 
         # send open command
         await self.brot.roof.open()
-        while self.brot.roof.status != RoofStatus.OPEN:
-            await asyncio.sleep(1)
+        await wait_until_settled(lambda: self.brot.roof.status == RoofStatus.OPEN, self.mqtt, poll_interval=1.0)
         log.info("Roof is open.")
 
         await self._change_motion_status(MotionStatus.POSITIONED)
@@ -95,8 +96,7 @@ class BrotRoof(BaseRoof):
 
         # close roof
         await self.brot.roof.close()
-        while self.brot.roof.status != RoofStatus.CLOSED:
-            await asyncio.sleep(1)
+        await wait_until_settled(lambda: self.brot.roof.status == RoofStatus.CLOSED, self.mqtt, poll_interval=1.0)
         log.info("Roof is closed.")
 
         await self._change_motion_status(MotionStatus.PARKED)

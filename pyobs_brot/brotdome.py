@@ -12,6 +12,8 @@ from pyobs.modules.roof.basedome import BaseDome
 from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 
+from ._settle import check_settling_alive
+
 log = logging.getLogger(__name__)
 
 
@@ -97,6 +99,7 @@ class BrotDome(BaseDome, IDome):
                     break
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
         await self.brot.dome.start_tracking()
         while True:
@@ -109,6 +112,7 @@ class BrotDome(BaseDome, IDome):
                     raise exc.InitError("Dome entered error state while starting tracking.")
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
         await self._change_motion_status(MotionStatus.POSITIONED)
         await self.comm.send_event(RoofOpenedEvent())
@@ -133,6 +137,7 @@ class BrotDome(BaseDome, IDome):
                     raise exc.ParkError("Dome entered error state while stopping tracking.")
                 case _:
                     break
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
         await self.brot.dome.close()
         while True:
@@ -142,6 +147,7 @@ class BrotDome(BaseDome, IDome):
                     break
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
         await self.brot.dome.park()
         while True:
@@ -154,6 +160,7 @@ class BrotDome(BaseDome, IDome):
                     raise exc.ParkError("Dome entered error state while parking.")
                 case _:
                     pass
+            await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
         await self._change_motion_status(MotionStatus.PARKED)
 

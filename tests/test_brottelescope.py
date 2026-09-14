@@ -106,10 +106,14 @@ async def test_set_offsets_radec_sends_scaled_and_sign_flipped_offsets() -> None
 
 @pytest.mark.asyncio
 async def test_set_offsets_radec_waits_until_both_axes_converge(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
     telescope = BrotRaDecTelescope(host="localhost", name="telescope")
     telescope.brot.telescope.set_offset_ha = AsyncMock()  # type: ignore[method-assign]
     telescope.brot.telescope.set_offset_dec = AsyncMock()  # type: ignore[method-assign]
     telescope.comm.set_state = AsyncMock()  # type: ignore[method-assign]
+    telescope.mqtt._connected = True
+    telescope.mqtt._last_message_at = time.monotonic()
 
     # still slewing for two polls (HA, then DEC, still off-target), converged on the third
     readings = [(1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]

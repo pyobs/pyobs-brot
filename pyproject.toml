@@ -9,7 +9,7 @@ dependencies = [
     "astropy>=7.0.1,<9",
     "pyobs-core>=2.6.0,<3",
     "paho-mqtt>=2.1.0",
-    "pybrotlib>=1.2.1",
+    "pybrotlib>=1.2.2",
 ]
 
 [dependency-groups]
