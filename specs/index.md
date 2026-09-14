@@ -20,4 +20,5 @@ Relevant so far:
   as 2.0.3 to match.
 - `pyobs-core/specs/plans/2026-09-14-brot-settle-loop-staleness-and-resend.md` — shared
   `wait_until_settled()` helper for telescope/dome/roof settle loops (staleness detection + setpoint
-  resend), addressing #61.
+  resend), closing #61 (`pybrotlib` 1.2.2 / `pyobs-brot` 2.0.4). Root-cause investigation (resend
+  confirmed not to explain #61's actual symptom, per the real PLC source) split out to #71.
