@@ -34,6 +34,7 @@ from pyobs.utils.publisher import CsvPublisher
 from pyobs.utils.time import Time
 
 from ._settle import check_settling_alive, wait_until_settled
+from ._weather import build_weather_publisher
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,11 @@ class BrotBaseTelescope(
         keepalive: int = 60,
         roof: str = "None",
         dome: str = "None",
+        weather_source: str | None = None,
+        weather_url: str | None = None,
+        weather_path: str | None = None,
+        weather_interval: float = 60.0,
+        weather_max_age: float | None = 300.0,
         **kwargs: Any,
     ):
         super().__init__(
@@ -66,6 +72,15 @@ class BrotBaseTelescope(
 
         self.mqtt = MQTTTransport(host, port)
         self.brot = BROT(self.mqtt, name)
+        self.weather = build_weather_publisher(
+            self.mqtt,
+            name,
+            source=weather_source,
+            url=weather_url,
+            path=weather_path,
+            interval=weather_interval,
+            max_age=weather_max_age,
+        )
         self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self._missing_temperature_sensors: set[str] = set()
         self._temperature_readings: dict[str, float] = {}
@@ -86,6 +101,8 @@ class BrotBaseTelescope(
     async def open(self) -> None:
         await BaseTelescope.open(self)
         asyncio.create_task(self.mqtt.run())
+        if self.weather is not None:
+            asyncio.create_task(self.weather.run())
         await asyncio.sleep(2)
 
         # publish initial states
@@ -102,6 +119,8 @@ class BrotBaseTelescope(
 
     async def close(self) -> None:
         await BaseTelescope.close(self)
+        if self.weather is not None:
+            await self.weather.close()
         await self.mqtt.close()
 
     async def _update_task(self) -> None:
