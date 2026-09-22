@@ -19,6 +19,18 @@ def test_constructor_defaults() -> None:
     assert telescope.temperatures == {}
     assert telescope.focus_offset == 0.0
     assert telescope._roof == "None"
+    assert telescope.weather is None
+
+
+def test_constructor_builds_weather_publisher_when_configured() -> None:
+    telescope = BrotRaDecTelescope(
+        host="localhost",
+        name="telescope",
+        weather_source="pyobs",
+        weather_url="https://weather.example.org",
+    )
+    assert telescope.weather is not None
+    assert telescope.weather.site == "telescope"
 
 
 def test_constructor_threads_kwargs_cooperatively() -> None:

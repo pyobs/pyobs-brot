@@ -18,6 +18,12 @@ Relevant so far:
 - `pyBROT`'s own `specs/plans/mqtt-reconnect.md` (`BROTLib/pyBROT`, not this repo) — `MQTTTransport`
   auto-reconnect fix closing #68; `pyobs-brot`'s `pybrotlib` floor bumped to `>=1.2.1` and released
   as 2.0.3 to match.
+- `pyBROT`'s own `specs/plans/2026-09-22-weather-sources.md` (`BROTLib/pyBROT`, not this repo) —
+  pluggable `WeatherSource` (pyobs-weather + local JSON/YAML) and a `WeatherPublisher`, closing
+  pyBROT#32; wired up here as `BrotBaseTelescope`'s optional `weather_source`/`weather_url`/
+  `weather_path` params (`pyobs_brot/_weather.py`) -- telescope only, not dome/roof, since every
+  BROT module opens its own MQTT connection to the same broker and would otherwise publish the
+  same reading redundantly. `pybrotlib` floor bumped to `>=1.3.0` to match.
 - `pyobs-core/specs/plans/2026-09-14-brot-settle-loop-staleness-and-resend.md` — shared
   `wait_until_settled()` helper for telescope/dome/roof settle loops (staleness detection + setpoint
   resend), closing #61 (`pybrotlib` 1.2.2 / `pyobs-brot` 2.0.4). Root-cause investigation (resend
