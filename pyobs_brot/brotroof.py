@@ -45,6 +45,11 @@ class BrotRoof(BaseRoof):
             await asyncio.sleep(1)
 
     async def _update_status(self) -> None:
+        # the broker can stay up while the PLC is gone, leaving telemetry frozen: don't report it as current
+        if self.mqtt.plc_online is False:
+            await self._error_state("PLC is offline.", log_once=True)
+            return
+
         # check whats up
         match self.brot.roof.status:
             case RoofStatus.ERROR:

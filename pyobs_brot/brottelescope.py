@@ -134,6 +134,12 @@ class BrotBaseTelescope(
                 break
 
     async def _update(self) -> None:
+        # the broker can stay up while the PLC is gone, leaving telemetry frozen: don't report it as current
+        if self.mqtt.plc_online is False:
+            await self._error_state("PLC is offline.", log_once=True)
+            await self.comm.set_state(IReady, ReadyState(ready=False))
+            return
+
         match self.brot.telescope.status:
             case TelescopeStatus.PARKED:
                 await self._change_motion_status(MotionStatus.PARKED)

@@ -11,6 +11,9 @@ DEFAULT_POLL_INTERVAL = 0.1
 
 
 def _check_alive(transport: Transport, stale_after: float) -> None:
+    # plc_online is None for PLCs without last-will support: unknown, fall through to the stall check
+    if transport.plc_online is False:
+        raise exc.MoveError("PLC went offline while waiting to settle.")
     age = transport.telemetry_age()
     if not transport.connected or age is None or age > stale_after:
         raise exc.MoveError("Telemetry stream stalled while waiting to settle.")

@@ -7,8 +7,9 @@ from pyobs_brot._settle import wait_until_settled
 
 
 class _FakeTransport:
-    def __init__(self, connected: bool = True, age: float | None = 0.0) -> None:
+    def __init__(self, connected: bool = True, age: float | None = 0.0, plc_online: bool | None = None) -> None:
         self.connected = connected
+        self.plc_online = plc_online
         self._age = age
 
     def telemetry_age(self) -> float | None:
@@ -99,3 +100,17 @@ async def test_wait_until_settled_no_resend_if_settles_quickly() -> None:
         poll_interval=0.001,
     )
     assert resend_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_wait_until_settled_raises_when_plc_offline() -> None:
+    # fresh telemetry age, but the PLC's last-will says it is gone
+    transport = _FakeTransport(connected=True, age=0.0, plc_online=False)
+    with pytest.raises(exc.MoveError, match="PLC"):
+        await wait_until_settled(lambda: False, transport, poll_interval=0.001)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_wait_until_settled_ignores_unknown_plc_status() -> None:
+    transport = _FakeTransport(connected=True, age=0.0, plc_online=None)
+    await wait_until_settled(lambda: True, transport, poll_interval=0.001)  # type: ignore[arg-type]
