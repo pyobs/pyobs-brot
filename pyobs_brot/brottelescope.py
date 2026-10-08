@@ -62,6 +62,7 @@ class BrotBaseTelescope(
         weather_path: str | None = None,
         weather_interval: float = 60.0,
         weather_max_age: float | None = 300.0,
+        ra_in_hours: bool = True,
         **kwargs: Any,
     ):
         super().__init__(
@@ -70,7 +71,7 @@ class BrotBaseTelescope(
             **kwargs,
         )
 
-        self.mqtt = MQTTTransport(host, port)
+        self.mqtt = MQTTTransport(host, port, ra_in_hours=ra_in_hours)
         self.brot = BROT(self.mqtt, name)
         self.weather = build_weather_publisher(
             self.mqtt,
@@ -92,7 +93,7 @@ class BrotBaseTelescope(
     @property
     def _position_radec(self) -> tuple[float, float] | None:
         try:
-            ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15
+            ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS
             dec = self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS
             return ra, dec
         except Exception:
@@ -156,7 +157,7 @@ class BrotBaseTelescope(
                 await self.comm.set_state(IReady, ReadyState(ready=False))
 
         # publish pointing state
-        ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS * 15
+        ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS
         dec = self.brot.telescope._telemetry.POSITION.EQUATORIAL.DEC_ICRS
         await self.comm.set_state(IPointingRaDec, RaDecState(ra=ra, dec=dec))
         alt = self.brot.telescope._telemetry.POSITION.HORIZONTAL.ALT
