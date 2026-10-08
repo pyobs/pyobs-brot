@@ -143,3 +143,21 @@ async def test_set_offsets_radec_waits_until_both_axes_converge(monkeypatch: pyt
     await telescope.set_offsets_radec(0.001, 0.002)
 
     assert sleep_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_update_plc_offline_sets_error_and_not_ready() -> None:
+    from pyobs.interfaces import IReady
+    from pyobs.utils.enums import MotionStatus
+
+    telescope = BrotRaDecTelescope(host="localhost", name="telescope")
+    telescope.comm.set_state = AsyncMock()  # type: ignore[method-assign]
+    telescope.mqtt.plc_online = False
+
+    await telescope._update()
+
+    assert telescope.motion_status() == MotionStatus.ERROR
+    assert telescope.comm.set_state.await_args is not None
+    interface, state = telescope.comm.set_state.await_args.args
+    assert interface is IReady
+    assert state.ready is False

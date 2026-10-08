@@ -55,6 +55,12 @@ class BrotDome(BaseDome, IDome):
             try:
                 current_state = self.motion_status()
                 new_state = current_state
+                if self.mqtt.plc_online is False:
+                    # the broker can stay up while the PLC is gone, leaving telemetry frozen
+                    if current_state != MotionStatus.ERROR:
+                        await self._error_state("PLC is offline.")
+                    await asyncio.sleep(1)
+                    continue
                 if current_state == MotionStatus.INITIALIZING:
                     pass
                 elif current_state == MotionStatus.PARKING:
