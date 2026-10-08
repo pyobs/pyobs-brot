@@ -161,3 +161,19 @@ async def test_update_plc_offline_sets_error_and_not_ready() -> None:
     interface, state = telescope.comm.set_state.await_args.args
     assert interface is IReady
     assert state.ready is False
+
+
+def test_dut1_publisher_off_by_default() -> None:
+    telescope = BrotRaDecTelescope(host="localhost", name="telescope")
+    assert telescope.dut1 is None
+    assert telescope.mqtt.multi_field_commands is False
+
+
+def test_dut1_publisher_and_multi_field_commands_configured() -> None:
+    telescope = BrotRaDecTelescope(
+        host="localhost", name="telescope", publish_dut1=True, dut1_interval=30.0, multi_field_commands=True
+    )
+    assert telescope.dut1 is not None
+    assert telescope.dut1.site == "telescope"
+    assert telescope.dut1.interval == 30.0
+    assert telescope.mqtt.multi_field_commands is True

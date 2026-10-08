@@ -6,6 +6,7 @@ import numpy as np
 from pybrotlib import BROT  # type: ignore
 from pybrotlib.components.telescope import MotionState, TelescopeStatus  # type: ignore
 from pybrotlib.transport import MQTTTransport  # type: ignore
+from pybrotlib.weather import Dut1Publisher  # type: ignore
 from pyobs.interfaces import (
     AltAzOffsetState,
     AltAzState,
@@ -63,6 +64,9 @@ class BrotBaseTelescope(
         weather_interval: float = 60.0,
         weather_max_age: float | None = 300.0,
         ra_in_hours: bool = False,
+        multi_field_commands: bool = False,
+        publish_dut1: bool = False,
+        dut1_interval: float = 60.0,
         **kwargs: Any,
     ):
         super().__init__(
@@ -71,7 +75,7 @@ class BrotBaseTelescope(
             **kwargs,
         )
 
-        self.mqtt = MQTTTransport(host, port, ra_in_hours=ra_in_hours)
+        self.mqtt = MQTTTransport(host, port, ra_in_hours=ra_in_hours, multi_field_commands=multi_field_commands)
         self.brot = BROT(self.mqtt, name)
         self.weather = build_weather_publisher(
             self.mqtt,
@@ -82,6 +86,8 @@ class BrotBaseTelescope(
             interval=weather_interval,
             max_age=weather_max_age,
         )
+        # like the weather publisher, enable this on one BROT module per site only
+        self.dut1 = Dut1Publisher(self.mqtt, name, interval=dut1_interval) if publish_dut1 else None
         self.temperatures: dict[str, str] = {} if temperatures is None else temperatures
         self._missing_temperature_sensors: set[str] = set()
         self._temperature_readings: dict[str, float] = {}
@@ -104,6 +110,8 @@ class BrotBaseTelescope(
         asyncio.create_task(self.mqtt.run())
         if self.weather is not None:
             asyncio.create_task(self.weather.run())
+        if self.dut1 is not None:
+            asyncio.create_task(self.dut1.run())
         await asyncio.sleep(2)
 
         # publish initial states
@@ -122,6 +130,8 @@ class BrotBaseTelescope(
         await BaseTelescope.close(self)
         if self.weather is not None:
             await self.weather.close()
+        if self.dut1 is not None:
+            await self.dut1.close()
         await self.mqtt.close()
 
     async def _update_task(self) -> None:
