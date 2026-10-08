@@ -62,7 +62,7 @@ class BrotBaseTelescope(
         weather_path: str | None = None,
         weather_interval: float = 60.0,
         weather_max_age: float | None = 300.0,
-        ra_in_hours: bool = True,
+        ra_in_hours: bool = False,
         **kwargs: Any,
     ):
         super().__init__(
