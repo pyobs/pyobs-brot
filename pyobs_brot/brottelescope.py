@@ -369,6 +369,7 @@ class BrotBaseTelescope(
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, **kwargs: Any
     ) -> dict[str, FitsHeaderEntry]:
+        kwargs.setdefault("sender", "")
         hdr = await BaseTelescope.get_fits_header_before(self, namespaces, **kwargs)
 
         hdr["FOCOFF"] = FitsHeaderEntry(self.focus_offset, "Focus offset [mm]")
@@ -416,7 +417,7 @@ class BrotRaDecTelescope(BrotBaseTelescope, IOffsetsRaDec):
     async def get_fits_header_before(
         self, namespaces: list[str] | None = None, sender: str = "", **kwargs: Any
     ) -> dict[str, FitsHeaderEntry]:
-        hdr = await BrotBaseTelescope.get_fits_header_before(self)
+        hdr = await BrotBaseTelescope.get_fits_header_before(self, namespaces=namespaces, sender=sender, **kwargs)
         tel = self.brot.telescope._telemetry
         hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
@@ -475,7 +476,7 @@ class BrotAltAzTelescope(BrotBaseTelescope, IOffsetsAltAz, IPointingSeries):
         self, namespaces: list[str] | None = None, sender: str = "", **kwargs: Any
     ) -> dict[str, FitsHeaderEntry]:
         tel = self.brot.telescope._telemetry
-        hdr = await BrotBaseTelescope.get_fits_header_before(self)
+        hdr = await BrotBaseTelescope.get_fits_header_before(self, namespaces=namespaces, sender=sender, **kwargs)
         hdr["TEL-FOCU"] = FitsHeaderEntry(self.brot.focus.position, "Focus position [mm]")
         hdr["HAOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.HA.OFFSET, "Hour Angle offset")
         hdr["DECOFF"] = FitsHeaderEntry(tel.POSITION.INSTRUMENTAL.DEC.OFFSET, "Declination offset")
