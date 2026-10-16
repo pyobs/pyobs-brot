@@ -176,6 +176,10 @@ class BrotBaseTelescope(
             case TelescopeStatus.ERROR:
                 await self._error_state(log_once=True)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
+            case _:
+                # Unknown/new firmware states must not leave a previously published ready=True in place.
+                await self._change_motion_status(MotionStatus.UNKNOWN)
+                await self.comm.set_state(IReady, ReadyState(ready=False))
 
         # publish pointing state
         ra = self.brot.telescope._telemetry.POSITION.EQUATORIAL.RA_ICRS

@@ -93,3 +93,20 @@ async def test_calibrating_with_older_pybrotlib_unknown_status() -> None:
         await scope._update()
     scope._change_motion_status.assert_awaited_once_with(MotionStatus.INITIALIZING)
     assert any(call.args[0] is IReady and not call.args[1].ready for call in scope.comm.set_state.await_args_list)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unknown_state", [-2.0, 0.8000000001, 0.99])
+async def test_unknown_status_clears_previous_ready_state(unknown_state: float) -> None:
+    scope = telescope()
+    scope._change_motion_status = AsyncMock()
+    scope.comm.set_state = AsyncMock()
+    scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = 1.0
+    await scope._update()
+
+    scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = unknown_state
+    await scope._update()
+
+    scope._change_motion_status.assert_awaited_with(MotionStatus.UNKNOWN)
+    ready_states = [call.args[1].ready for call in scope.comm.set_state.await_args_list if call.args[0] is IReady]
+    assert ready_states == [True, False]
