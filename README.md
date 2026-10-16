@@ -58,3 +58,12 @@ Dependencies
 * [pybrotlib](https://pypi.org/project/pybrotlib/) for communicating with BROT devices.
 * [paho-mqtt](https://pypi.org/project/paho-mqtt/) as the MQTT client used by BROTlib.
 * [Astropy](http://www.astropy.org/) for FITS file handling.
+
+### Calibration status
+
+The telescope driver treats READY_STATE 0.7 (initializing) and 0.8 (calibrating,
+including automatic startup positioning) as initializing/not ready. `init()`
+continues waiting for 1.0. PLC firmware must reserve 1.0 for completed startup. pybrotlib adds a named
+CALIBRATING status; the driver also recognizes raw 0.8 with older pybrotlib
+versions during staged upgrades. Upgrade Python consumers before enabling the
+new PLC state.
