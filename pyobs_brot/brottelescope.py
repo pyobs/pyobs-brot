@@ -150,7 +150,12 @@ class BrotBaseTelescope(
             await self.comm.set_state(IReady, ReadyState(ready=False))
             return
 
-        match self.brot.telescope.status:
+        # Use the wire value for the new phase so older pybrotlib versions (which call 0.8 UNKNOWN)
+        # remain compatible during a staged fleet upgrade. New pybrotlib exposes CALIBRATING for it.
+        status = self.brot.telescope.status
+        if self.brot.telescope._telemetry.TELESCOPE.READY_STATE == 0.8:
+            status = TelescopeStatus.INITIALIZING
+        match status:
             case TelescopeStatus.PARKED:
                 await self._change_motion_status(MotionStatus.PARKED)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
@@ -170,6 +175,10 @@ class BrotBaseTelescope(
                 await self.comm.set_state(IReady, ReadyState(ready=True))
             case TelescopeStatus.ERROR:
                 await self._error_state(log_once=True)
+                await self.comm.set_state(IReady, ReadyState(ready=False))
+            case _:
+                # Unknown/new firmware states must not leave a previously published ready=True in place.
+                await self._change_motion_status(MotionStatus.UNKNOWN)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
 
         # publish pointing state

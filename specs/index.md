@@ -1,11 +1,19 @@
 # Design/planning docs
 
-This repo has no `specs/` structure of its own. Design docs, implementation plans, and ADRs that
-concern `pyobs-brot` — including ones actually implemented here — live in `pyobs-core`'s `specs/`
-tree instead (`specs/design/`, `specs/plans/`, `specs/adrs/`), each tagged with a `Repos:` line
-naming every repo it concerns. See `pyobs-core/CLAUDE.md`'s "Cross-repo docs" section.
+`pyobs-brot` keeps its own implementation plans in `specs/plans/`, following the same conventions
+as `pyobs-core`'s `specs/` tree. Older design docs, implementation plans, and ADRs that concern
+`pyobs-brot` — including ones actually implemented here — live in `pyobs-core`'s `specs/` tree
+instead (`specs/design/`, `specs/plans/`, `specs/adrs/`), each tagged with a `Repos:` line naming
+every repo it concerns. See `pyobs-core/CLAUDE.md`'s "Cross-repo docs" section.
 
-Relevant so far:
+## Local plans
+
+- `plans/2026-10-15-iag50cm-client-validation.md` — **proposed**. Client validation of
+  `BrotRaDecTelescope`/`BrotBaseTelescope` against a live BROT telescope (IAG50cm): offset scaling
+  and lifetime, preemption, state mapping, error/power handling, DUT1 and multi-field commands.
+  (Repos: pyobs-brot, pyBROT)
+
+## Relevant from pyobs-core and elsewhere
 
 - `pyobs-core/specs/plans/ejabberd-throughput-benchmarking.md` — XMPP/ejabberd throughput
   benchmarking, including a production incident investigation involving `BrotDome`/
