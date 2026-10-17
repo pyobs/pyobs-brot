@@ -311,8 +311,13 @@ class BrotBaseTelescope(
                 await self._error_state("Telescope can not be initialized, it has errors.")
                 raise exc.InitError("Telescope can not be initialized, it has errors.")
 
-        log.info("Initializing telescope...")
-        await self.brot.telescope.power_on()
+        # a startup is already running: join it instead of requesting another one
+        pending = self.brot.telescope._telemetry.TELESCOPE.READY_STATE in (0.7, 0.8)
+        if pending:
+            log.info("Telescope is already initializing, waiting for it...")
+        else:
+            log.info("Initializing telescope...")
+            await self.brot.telescope.power_on()
         while True:
             match self.brot.telescope._telemetry.TELESCOPE.READY_STATE:
                 case 1.0:
@@ -321,7 +326,13 @@ class BrotBaseTelescope(
                 case -1.0:
                     await self._error_state("Error during powerup of telescope.")
                     raise exc.InitError("Error during powerup of telescope.")
-                case 0.0:
+                case 0.7 | 0.8:
+                    pending = True
+                case 0.0 | 0.3 | -2.0 if pending:
+                    # startup was aborted or parked after it began: -2.0 is "not operational, not parked"
+                    raise exc.InitError("Startup of telescope was interrupted.")
+                case _:
+                    # stale values right after the command, before the PLC reports 0.7
                     pass
             await check_settling_alive(self.mqtt)
             await asyncio.sleep(1)
