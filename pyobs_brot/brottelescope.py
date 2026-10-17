@@ -150,16 +150,11 @@ class BrotBaseTelescope(
             await self.comm.set_state(IReady, ReadyState(ready=False))
             return
 
-        # Use the wire value for the new phase so older pybrotlib versions (which call 0.8 UNKNOWN)
-        # remain compatible during a staged fleet upgrade. New pybrotlib exposes CALIBRATING for it.
-        status = self.brot.telescope.status
-        if self.brot.telescope._telemetry.TELESCOPE.READY_STATE == 0.8:
-            status = TelescopeStatus.INITIALIZING
-        match status:
+        match self.brot.telescope.status:
             case TelescopeStatus.PARKED:
                 await self._change_motion_status(MotionStatus.PARKED)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
-            case TelescopeStatus.INITIALIZING:
+            case TelescopeStatus.INITIALIZING | TelescopeStatus.CALIBRATING:
                 await self._change_motion_status(MotionStatus.INITIALIZING)
                 await self.comm.set_state(IReady, ReadyState(ready=False))
             case TelescopeStatus.PARKING:
