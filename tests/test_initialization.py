@@ -110,3 +110,44 @@ async def test_unknown_status_clears_previous_ready_state(unknown_state: float) 
     scope._change_motion_status.assert_awaited_with(MotionStatus.UNKNOWN)
     ready_states = [call.args[1].ready for call in scope.comm.set_state.await_args_list if call.args[0] is IReady]
     assert ready_states == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_init_joins_running_startup_without_new_power_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    scope = telescope()
+    scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = 0.8
+
+    async def finish(_seconds: float) -> None:
+        scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = 1.0
+
+    monkeypatch.setattr("pyobs_brot.brottelescope.asyncio.sleep", finish)
+    await scope.init()
+    cast(AsyncMock, scope.brot.telescope.power_on).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("aborted", [-2.0, 0.0, 0.3])
+async def test_aborted_startup_fails_init(monkeypatch: pytest.MonkeyPatch, aborted: float) -> None:
+    scope = telescope()
+    readings = iter((0.7, 0.8, aborted))
+
+    async def advance(_seconds: float) -> None:
+        scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = next(readings)
+
+    monkeypatch.setattr("pyobs_brot.brottelescope.asyncio.sleep", advance)
+    with pytest.raises(exc.InitError, match="interrupted"):
+        await scope.init()
+
+
+@pytest.mark.asyncio
+async def test_stale_not_operational_value_before_startup_is_not_an_abort(monkeypatch: pytest.MonkeyPatch) -> None:
+    scope = telescope()
+    scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = -2.0
+    readings = iter((-2.0, 0.7, 1.0))
+
+    async def advance(_seconds: float) -> None:
+        scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = next(readings)
+
+    monkeypatch.setattr("pyobs_brot.brottelescope.asyncio.sleep", advance)
+    await scope.init()
+    cast(AsyncMock, scope.brot.telescope.power_on).assert_awaited_once()
