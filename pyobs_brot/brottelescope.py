@@ -294,7 +294,7 @@ class BrotBaseTelescope(
     async def init(self, **kwargs: Any) -> None:
         # weather?
         if not self.is_weather_good():
-            raise exc.InitError("Weather seems to be bad.")
+            raise exc.InitRefusedError("Weather seems to be bad.")
 
         match self.brot.telescope.status:
             case TelescopeStatus.PARKED:

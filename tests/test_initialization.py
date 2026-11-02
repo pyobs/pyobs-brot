@@ -10,7 +10,7 @@ from pyobs.interfaces import IReady
 from pyobs.utils import exceptions as exc
 from pyobs.utils.enums import MotionStatus
 
-from pyobs_brot import BrotRaDecTelescope
+from pyobs_brot import BrotDome, BrotRaDecTelescope, BrotRoof
 
 
 def telescope() -> BrotRaDecTelescope:
@@ -171,3 +171,16 @@ async def test_init_with_error_state_refuses_power_on() -> None:
     with pytest.raises(exc.InitError, match="has errors"):
         await scope.init()
     cast(AsyncMock, scope.brot.telescope.power_on).assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("module_class", [BrotRaDecTelescope, BrotRoof, BrotDome])
+async def test_bad_weather_refuses_init_without_counting_as_motion_error(
+    monkeypatch: pytest.MonkeyPatch, module_class: type
+) -> None:
+    """Refusing init() on bad weather must not escalate the module to ERROR (core #1034)."""
+    module = module_class(host="localhost", name="test")
+    monkeypatch.setattr(module, "is_weather_good", lambda: False)
+    with pytest.raises(exc.InitRefusedError, match="Weather") as raised:
+        await module.init()
+    assert not isinstance(raised.value, (exc.InitError, exc.MotionError))
