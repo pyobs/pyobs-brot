@@ -36,3 +36,6 @@ every repo it concerns. See `pyobs-core/CLAUDE.md`'s "Cross-repo docs" section.
   `wait_until_settled()` helper for telescope/dome/roof settle loops (staleness detection + setpoint
   resend), closing #61 (`pybrotlib` 1.2.2 / `pyobs-brot` 2.0.4). Root-cause investigation (resend
   confirmed not to explain #61's actual symptom, per the real PLC source) split out to #71.
+- `pyobs-core/specs/plans/2026-11-02-init-aborted-error.md` — `InitAbortedError`, raised by
+  `BrotRaDecTelescope.init()` when a startup is interrupted on purpose, so it no longer counts towards
+  `MotionError` escalation (pyobs-core#1031). Needs `pyobs-core>=2.22.0`.
