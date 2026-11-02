@@ -324,8 +324,9 @@ class BrotBaseTelescope(
                 case 0.7 | 0.8:
                     pending = True
                 case 0.0 | 0.3 | -2.0 if pending:
-                    # startup was aborted or parked after it began: -2.0 is "not operational, not parked"
-                    raise exc.InitError("Startup of telescope was interrupted.")
+                    # startup was aborted or parked after it began: -2.0 is "not operational, not parked". Deliberate,
+                    # so not an InitError (a MotionError): it must not count towards error escalation (core #1031)
+                    raise exc.InitAbortedError("Startup of telescope was interrupted.")
                 case _:
                     # stale values right after the command, before the PLC reports 0.7
                     pass
