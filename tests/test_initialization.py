@@ -120,8 +120,9 @@ async def test_aborted_startup_fails_init(monkeypatch: pytest.MonkeyPatch, abort
         scope.brot.telescope._telemetry.TELESCOPE.READY_STATE = next(readings)
 
     monkeypatch.setattr("pyobs_brot.brottelescope.asyncio.sleep", advance)
-    with pytest.raises(exc.InitError, match="interrupted"):
+    with pytest.raises(exc.InitAbortedError, match="interrupted") as raised:
         await scope.init()
+    assert not isinstance(raised.value, (exc.InitError, exc.MotionError))
 
 
 @pytest.mark.asyncio
